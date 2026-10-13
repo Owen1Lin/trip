@@ -20,26 +20,32 @@ if (publishableKey.startsWith('eyJ')) {
   assert.match(publishableKey, /^sb_publishable_/, 'Only a publishable key is allowed in browser configuration.');
 }
 
-async function readJson(path) {
+async function requestJson(path) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20_000);
   try {
     const response = await fetch(`${url}${path}`, { headers, signal: controller.signal });
     const body = await response.json().catch(() => null);
-    assert.equal(response.status, 200, `${path} returned HTTP ${response.status}.`);
-    return body;
+    return { response, body };
   } finally {
     clearTimeout(timeout);
   }
 }
 
 (async () => {
-  const settings = await readJson('/auth/v1/settings');
+  const settingsResult = await requestJson('/auth/v1/settings');
+  assert.equal(settingsResult.response.status, 200, `/auth/v1/settings returned HTTP ${settingsResult.response.status}.`);
+  const settings = settingsResult.body;
   assert.equal(settings?.external?.email, true, 'Supabase Email authentication is not enabled.');
 
-  const rows = await readJson('/rest/v1/trip_snapshots?select=user_id&limit=1');
-  assert.ok(Array.isArray(rows), 'trip_snapshots did not return a JSON array.');
-  assert.equal(rows.length, 0, 'Anonymous access exposed a trip snapshot; check RLS policies.');
+  const tableResult = await requestJson('/rest/v1/trip_snapshots?select=user_id&limit=1');
+  assert.notEqual(tableResult.response.status, 404, 'trip_snapshots does not exist or is not exposed through the Data API.');
+  if (tableResult.response.status === 200) {
+    assert.ok(Array.isArray(tableResult.body), 'trip_snapshots did not return a JSON array.');
+    assert.equal(tableResult.body.length, 0, 'Anonymous access exposed a trip snapshot; check RLS policies.');
+  } else {
+    assert.ok([401, 403].includes(tableResult.response.status), `Anonymous table access returned unexpected HTTP ${tableResult.response.status}.`);
+  }
 
   console.log('PASS: real Supabase auth settings, trip_snapshots schema, and anonymous RLS check.');
 })().catch(error => {
