@@ -44,5 +44,7 @@ async function readJson(path) {
   console.log('PASS: real Supabase auth settings, trip_snapshots schema, and anonymous RLS check.');
 })().catch(error => {
   console.error(`FAIL: ${error.message}`);
+  const annotation = String(error.message).replaceAll('%', '%25').replaceAll('\r', '%0D').replaceAll('\n', '%0A');
+  console.error(`::error title=Supabase setup::${annotation}`);
   process.exit(1);
 });
