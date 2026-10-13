@@ -36,6 +36,7 @@ jobs:
           curl --retry 10 --retry-connrefused --retry-delay 1 --fail --silent http://127.0.0.1:3000/ > /dev/null
           node tests/planner.test.cjs
           node tests/cloud.test.cjs
+          node tests/supabase.test.cjs
   deploy:
     needs: test
     runs-on: ubuntu-latest

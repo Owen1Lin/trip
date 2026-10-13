@@ -29,7 +29,7 @@ python3 -m http.server 3000 --bind 0.0.0.0
 
 三位 AI 協作角色與驗收規則見 [TEAM.md](TEAM.md)。完成開發後先審查、修正及驗收，再於已獲授權的工作階段提交並推送 GitHub；不代表常駐或即時逐字同步服務。
 
-`main` 推送會觸發 GitHub Actions 瀏覽器驗收；測試通過後才部署至 Pages。工作流程已建立，遠端執行與實際上線仍需確認。啟用方法與跨裝置設定見 [DEPLOYMENT.md](DEPLOYMENT.md)。
+`main` 推送會觸發 GitHub Actions 瀏覽器驗收及唯讀 Supabase 設定檢查；測試通過後才部署至 Pages。啟用方法與跨裝置設定見 [DEPLOYMENT.md](DEPLOYMENT.md)。
 
 ## 驗收
 
