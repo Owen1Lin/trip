@@ -65,6 +65,8 @@
       if (!response.ok) {
         if (response.status === 401) throw rejected('登入已失效，請重新使用 Google 登入。');
         if (response.status === 403) throw rejected('這個帳號尚未獲准使用專屬空間。');
+        if (path === '/functions/v1/link-import' && response.status === 404) throw new Error('Supabase 尚未部署 link-import 公開連結匯入服務，請通知歐文完成部署。');
+        if (path === '/functions/v1/link-import' && response.status === 422) throw new Error('平台限制或此連結沒有可讀取的公開資料，請核對原始連結後手動填寫。');
         if (response.status === 404) throw new Error('專屬空間尚未完成設定，請通知歐文。');
         if (response.status === 409) throw new Error('共同行程已更新，請先載入最新內容，再合併修改。');
         if (response.status === 429) throw new Error('請稍等一下，再重試這個操作。');
@@ -122,11 +124,16 @@
   }
   async function importPublicLink({ url, model }) {
     const attempt = generation;
-    await requireMembership();
-    if (attempt !== generation) throw rejected('登入狀態已變更，請重新登入。');
-    const result = await request('/functions/v1/link-import', { method: 'POST', body: { url, model }, timeoutMs: 50000 });
-    if (attempt !== generation) throw rejected('登入狀態已變更，請重新登入。');
-    return result;
+    try {
+      await requireMembership();
+      if (attempt !== generation) throw rejected('登入狀態已變更，請重新登入。');
+      const result = await request('/functions/v1/link-import', { method: 'POST', body: { url, model }, timeoutMs: 50000 });
+      if (attempt !== generation) throw rejected('登入狀態已變更，請重新登入。');
+      return result;
+    } catch (error) {
+      if (error.denied && attempt === generation) lock(error.message);
+      throw error;
+    }
   }
   window.TripAuth = Object.freeze({ requireMembership, importPublicLink });
   function renderLogin(text = '') {

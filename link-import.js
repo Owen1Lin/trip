@@ -46,7 +46,7 @@
     $('#link-draft-form').reset();$('#draft-source').removeAttribute('href');$('#draft-source').textContent='';$('#draft-evidence').value='';$('#draft-pending').textContent='';$('#draft-add').disabled=true;
     $('#link-fetch').disabled=true;$('#link-draft-form').hidden=true;status('正在取得公開資料，不會直接加入行程…');
     try {
-      if (typeof window.TripAuth?.importPublicLink!=='function') throw new Error('公開資料服務尚未設定。');
+      if (typeof window.TripAuth?.importPublicLink!=='function') throw new Error('頁面載入的前端版本不一致，請重新整理頁面後再試。');
       const data=await window.TripAuth.importPublicLink({url,model:$('#link-model').value});
       if(attempt!==generation||$('#private-app').hidden)return;
       if (!data || typeof data.evidence!=='string' || !data.evidence.trim()) throw new Error('沒有可讀取的公開資料。');

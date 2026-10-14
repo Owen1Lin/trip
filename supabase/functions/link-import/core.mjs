@@ -36,8 +36,8 @@ export function extractMetadata(html) {
 export function groundModelDraft(output, metadata) {
   // Values must be verbatim parts of public evidence, accompanied by an exact quote.
   // Scheduling is intentionally excluded: post times and opening hours are not trip times.
-  const next = { place:'',category:'自訂',notes:metadata.description.slice(0,1600) };
-  if (!output || typeof output !== 'object') return next;
+  const next = { place:metadata.linkPlace || '',category:'自訂',notes:metadata.description.slice(0,1600) };
+  if (metadata.linkPlace || !output || typeof output !== 'object') return next;
   for (const [field,max] of [['place',150],['notes',1600]]) {
     const item = output[field];
     if (item && typeof item.value === 'string' && item.value.trim() && item.value.length <= max && typeof item.quote === 'string' && item.quote.trim() && metadata.evidence.includes(item.quote) && item.quote.includes(item.value)) next[field] = item.value.trim();
@@ -61,7 +61,17 @@ export async function fetchPublicMetadata(input, fetcher = fetch) {
     if (!response.body) throw new Error('公開頁面沒有內容。');
     const reader=response.body.getReader(), decoder=new TextDecoder(); let size=0,html='';
     try { while (true) { const {done,value}=await reader.read(); if(done) break; size+=value.byteLength; if(size>1024*1024) throw new Error('公開頁面過大，請手動填寫草稿。'); html+=decoder.decode(value,{stream:true}); } } finally { await reader.cancel(); }
-    html+=decoder.decode(); return {...current,...extractMetadata(html)};
+    html+=decoder.decode();
+    try { return {...current,...extractMetadata(html),linkPlace:'',warning:''}; }
+    catch (error) {
+      // Maps' server-rendered page can expose only generic metadata. A named,
+      // fetched /place/ URL still supplies literal link text, not verified facts.
+      const segment = current.platform === 'Google Maps' ? new URL(current.url).pathname.match(/^\/maps\/place\/([^/]+)(?:\/|$)/)?.[1] : undefined;
+      let place='';
+      try { if (segment) place=decodeURIComponent(segment.replace(/\+/g,' ')).trim(); } catch { /* Invalid URL name stays unavailable. */ }
+      if (!place || place.length>150 || /[\u0000-\u001f\u007f]/.test(place) || /^[@!]|^data=/i.test(place)) throw error;
+      return {...current,title:place,description:'',linkPlace:place,evidence:`公開連結地點文字（待確認）：${place}\n來源連結：${current.url}`,warning:'僅取得公開連結中的地點名稱，尚未核實商家資訊；請核對名稱，地址、電話、營業時間及行程日期與起訖時間仍待確認。'};
+    }
   }
   throw new Error('無法讀取公開連結。');
 }

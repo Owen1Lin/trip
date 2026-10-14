@@ -28,11 +28,11 @@ Deno.serve(async req => {
   if (!input || !['metadata','qwen','llama'].includes(input.model)) return send(400,{error:'模型選項不正確。'});
   try {
     const metadata=await fetchPublicMetadata(input.url);
-    let draft=groundModelDraft(null,metadata),modelUsed='metadata',warning='';
+    let draft=groundModelDraft(null,metadata),modelUsed='metadata',warning=metadata.warning;
     if (input.model!=='metadata') {
       const prefix=input.model.toUpperCase();
       const endpoint=Deno.env.get(`${prefix}_MODEL_URL`),key=Deno.env.get(`${prefix}_MODEL_KEY`),name=Deno.env.get(`${prefix}_MODEL_NAME`);
-      if (!endpoint || !key || !name) warning='所選模型尚未設定，已保留公開資料草稿；請手動核對。';
+      if (!endpoint || !key || !name) warning=[warning,'所選模型尚未設定，已保留公開資料草稿；請手動核對。'].filter(Boolean).join(' ');
       else {
         try {
           const url=new URL(endpoint);
@@ -43,9 +43,9 @@ Deno.serve(async req => {
           const content=data?.choices?.[0]?.message?.content;
           if (typeof content!=='string') throw new Error('Missing model content');
           draft=groundModelDraft(JSON.parse(content),metadata); modelUsed=input.model;
-        } catch { warning='模型無法完成有來源的整理，已保留公開資料草稿；請手動核對。'; }
+        } catch { warning=[warning,'模型無法完成有來源的整理，已保留公開資料草稿；請手動核對。'].filter(Boolean).join(' '); }
       }
     }
-    return send(200,{sourceUrl:metadata.url,platform:metadata.platform,title:metadata.title,evidence:metadata.evidence,draft,modelUsed,warning,missing:[...(!draft.place ? ['place']:[]),'date','period','startTime','endTime']});
+    return send(200,{sourceUrl:metadata.url,platform:metadata.platform,title:metadata.title,evidence:metadata.evidence,draft,modelUsed,warning,missing:[...(!draft.place || metadata.linkPlace ? ['place']:[]),'date','period','startTime','endTime']});
   } catch { return send(422,{error:'無法讀取此公開連結，可能需登入、平台限制或連結格式錯誤；請手動填寫，缺少的資料保持待確認。'}); }
 });

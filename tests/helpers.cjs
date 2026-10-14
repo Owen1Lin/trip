@@ -7,7 +7,7 @@ const USER_ID = '11111111-1111-1111-1111-111111111111';
 async function browser() { return chromium.launch({executablePath:process.env.CHROMIUM_PATH || '/usr/bin/chromium',headless:true,args:['--no-sandbox']}); }
 const publicConfig = () => ({url:'https://testing.supabase.co',publishableKey:'sb_publishable_testing'});
 async function configRoute(context, config=publicConfig()) {
-  await context.route('**/cloud-config.js', r => r.fulfill({contentType:'application/javascript',body:`window.TRIP_CLOUD_CONFIG=${JSON.stringify(config)};`}));
+  await context.route(/\/cloud-config\.js(?:\?.*)?$/, r => r.fulfill({contentType:'application/javascript',body:`window.TRIP_CLOUD_CONFIG=${JSON.stringify(config)};`}));
 }
 function googleUser(email='owentravel@gmail.com',id=USER_ID) {
   return {id,email,email_confirmed_at:'2026-10-14T00:00:00Z',app_metadata:{provider:'google',providers:['google']},identities:[{provider:'google',identity_data:{email,email_verified:true}}]};

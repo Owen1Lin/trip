@@ -64,7 +64,7 @@ Client Secret 只填在 Supabase 後台，不要放進程式碼、GitHub 或聊�
 GitHub Pages 無法安全保管模型金鑰，也不能直接跨來源擷取這些網站。請在同一個 Supabase 專案部署 `supabase/functions/link-import/`：
 
 ```sh
-supabase functions deploy link-import --project-ref lezobidxashxirzijveb
+supabase functions deploy link-import --use-api --project-ref lezobidxashxirzijveb
 ```
 
 函式使用 Edge Function 內建 `SUPABASE_URL`、`SUPABASE_ANON_KEY`，將登入者 JWT 傳至 `is_private_trip_member()` RPC 驗證 Google OAuth 與會員；不使用 service role 繞過 RLS。若專案的新 JWT 簽署方式與平台 legacy JWT gate 不相容，可使用 `--no-verify-jwt` 部署；函式內仍須以 RPC 驗證，不能移除會員檢查。
@@ -80,9 +80,15 @@ supabase functions deploy link-import --project-ref lezobidxashxirzijveb
 
 擷取僅接受白名單的 Google Maps、Threads 與 Instagram HTTPS URL，逐次檢查重新導向，限制下載大小與逾時。僅整理公開頁面提供的標題與描述，不登入來源、不讀私人貼文。短網址只有重新導向至允許的同平台網址才會繼續。來源可能因反爬蟲、登入頁或缺少 metadata 而無法取得資料；此時使用者須自行查閱來源並填寫空白草稿。
 
+Maps 短網址解析成功且地點頁只回傳通用 metadata 時，可使用最後的 `/maps/place/<名稱>/` 路徑文字預填名稱，保留公開來源網址並標示「待確認」。只採網址明示的名稱，不以座標推測地址，也不產生電話、評分或營業時間。沒有名稱的 Maps 通用頁面與社群登入頁仍拒收。
+
 模型只接收公開 metadata；其輸出必須符合原始來源文字才能採用。未設定模型或模型失敗時保留公開資料草稿並提示，不能宣稱模型成功。日期、時段與起訖時間不由模型產生，使用者須自行填寫及確認。名稱若無法從來源核實也留空。
 
 前端與函式部署是兩個步驟。GitHub main 推送不會部署 Edge Function 或設定模型金鑰。部署後需以授權會員驗證三個真實公開來源、模型連線、非會員拒絕與無法讀取時的手動流程；fixtures 與模擬瀏覽器測試不能取代這些檢查。
+
+匯入提示「前端版本不一致」時，表示載入的登入腳本沒有匯入方法，請先確認 Pages 部署成功，再重新整理；不是來源已讀取失敗。HTML 的 CSS／JavaScript URL 帶有共同版本參數，修改前端資源時應同步更新此版本，避免瀏覽器混用快取。匯入 API 的 404 表示尚未部署函式，422 表示來源限制或沒有可讀取公開資料；401／403 會鎖定私人頁面，不繼續提供登入中的手動草稿。
+
+雲端環境的 Node.js 唯讀連線檢查需使用既有 HTTPS 代理：`NODE_USE_ENV_PROXY=1 node tests/supabase.test.cjs`。不要關閉 TLS 驗證。此設定只影響雲端測試程序，不會替瀏覽器登入或部署函式。
 
 ## GitHub 驗收與部署
 
