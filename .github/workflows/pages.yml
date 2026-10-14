@@ -36,9 +36,17 @@ jobs:
           curl --retry 10 --retry-connrefused --retry-delay 1 --fail --silent http://127.0.0.1:3000/ > /dev/null
           node tests/planner.test.cjs
           node tests/cloud.test.cjs
-      - name: Verify Supabase project
-        run: |
-          node tests/supabase.test.cjs
+  cloud-readiness:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Verify Google login and private database
+        run: node tests/supabase.test.cjs
   deploy:
     needs: test
     runs-on: ubuntu-latest

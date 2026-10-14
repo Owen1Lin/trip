@@ -36,18 +36,24 @@ async function requestJson(path) {
   const settingsResult = await requestJson('/auth/v1/settings');
   assert.equal(settingsResult.response.status, 200, `/auth/v1/settings returned HTTP ${settingsResult.response.status}.`);
   const settings = settingsResult.body;
-  assert.equal(settings?.external?.email, true, 'Supabase Email authentication is not enabled.');
+  assert.equal(settings?.external?.google, true, 'Supabase Google OAuth is not enabled.');
+  const otherProviders = Object.entries(settings.external || {}).filter(([provider, enabled]) =>
+    enabled === true && !['google', 'email', 'phone', 'anonymous'].includes(provider));
+  assert.equal(otherProviders.length, 0, 'Keep OAuth providers other than Google disabled for this private space.');
 
-  const tableResult = await requestJson('/rest/v1/trip_snapshots?select=user_id&limit=1');
-  assert.notEqual(tableResult.response.status, 404, 'trip_snapshots does not exist or is not exposed through the Data API.');
-  if (tableResult.response.status === 200) {
-    assert.ok(Array.isArray(tableResult.body), 'trip_snapshots did not return a JSON array.');
-    assert.equal(tableResult.body.length, 0, 'Anonymous access exposed a trip snapshot; check RLS policies.');
-  } else {
-    assert.ok([401, 403].includes(tableResult.response.status), `Anonymous table access returned unexpected HTTP ${tableResult.response.status}.`);
+  for (const table of ['private_trip_members', 'shared_trip_snapshots']) {
+    const tableResult = await requestJson(`/rest/v1/${table}?select=*&limit=1`);
+    assert.notEqual(tableResult.response.status, 404, `${table} does not exist or is not exposed through the Data API.`);
+    if (tableResult.response.status === 200) {
+      assert.ok(Array.isArray(tableResult.body), `${table} did not return a JSON array.`);
+      assert.equal(tableResult.body.length, 0, `Anonymous access exposed ${table} rows; check RLS policies.`);
+    } else {
+      assert.ok([401, 403].includes(tableResult.response.status), `Anonymous ${table} access returned unexpected HTTP ${tableResult.response.status}.`);
+      assert.equal(tableResult.body?.code, '42501', 'Expected SQL permission denial; authentication errors do not prove the table is protected.');
+    }
   }
 
-  console.log('PASS: real Supabase auth settings, trip_snapshots schema, and anonymous RLS check.');
+  console.log('PASS: real Supabase Google OAuth setting and anonymous private-table denial. Member isolation and shared writes are not verified.');
 })().catch(error => {
   console.error(`FAIL: ${error.message}`);
   const annotation = String(error.message).replaceAll('%', '%25').replaceAll('\r', '%0D').replaceAll('\n', '%0A');

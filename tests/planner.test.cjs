@@ -1,122 +1,39 @@
-// Run against a running static server: node tests/planner.test.cjs
-// Requires Playwright and Chromium; no application dependency is added.
-const { chromium } = require('playwright');
-const assert = require('node:assert/strict');
-(async () => {
-  const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium', headless: true, args: ['--no-sandbox'] });
-  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, acceptDownloads: true });
-  const page = await context.newPage();
-  const errors = [];
-  page.on('pageerror', error => errors.push(error.message));
-  // External inspiration images are unrelated to planner behavior.
-  await context.route('https://images.unsplash.com/**', route => route.abort());
-  const url = process.env.TEST_URL || 'http://127.0.0.1:3000';
-  const upload = async (name, value) => page.locator('#import-file').setInputFiles({ name, mimeType: 'application/json', buffer: Buffer.from(value) });
-  const createTrip = async (name = '京都驗收旅程') => {
-    await page.locator('#trip-name').fill(name);
-    await page.locator('#trip-destination').fill('京都');
-    await page.locator('#trip-start').fill('2026-11-01');
-    await page.locator('#trip-days').fill('3');
-    await page.locator('#trip-form button[type="submit"]').click();
-  };
-  const addActivity = async (time, place, notes = '') => {
-    await page.locator('#activity-time').fill(time);
-    await page.locator('#activity-place').fill(place);
-    await page.locator('#activity-notes').fill(notes);
-    await page.locator('#activity-form button[type="submit"]').click();
-  };
-  try {
-    await page.goto(url);
-    await createTrip();
-    assert.equal(await page.locator('#active-trip-name').textContent(), '京都驗收旅程');
-    assert.equal(await page.locator('#day-tabs button').count(), 3);
-    await addActivity('14:30', '下午咖啡', '保留彈性');
-    const payload = '<img src=x onerror="window.__xss=1">';
-    await addActivity('09:00', payload, '<script>window.__xss=2</script>');
-    assert.match(await page.locator('#activity-list').innerText(), /09:00[\s\S]*14:30/);
-    assert.equal(await page.evaluate(() => window.__xss), undefined);
-    assert.equal(await page.locator('#activity-list img, #activity-list script').count(), 0);
-    await page.getByRole('button', { name: '編輯活動：下午咖啡', exact: true }).click();
-    assert.equal(await page.locator('#activity-place').inputValue(), '下午咖啡');
-    await page.locator('#activity-place').fill('下午美術館');
-    await page.locator('#activity-submit').click();
-    await page.getByRole('button', { name: '編輯活動：下午美術館', exact: true }).click();
-    await page.locator('#activity-place').fill('不應儲存的修改');
-    await page.locator('#activity-cancel').click();
-    assert.doesNotMatch(await page.locator('#activity-list').innerText(), /不應儲存的修改/);
-    assert.doesNotMatch(await page.locator('#activity-list').innerText(), /下午咖啡/);
-    await page.getByRole('button', { name: '刪除活動：' + payload, exact: true }).click();
-    assert.equal(await page.locator('#activity-list .activity-card').count(), 1);
-    await page.reload();
-    assert.match(await page.locator('#activity-list').innerText(), /下午美術館/);
-    assert.equal(await page.locator('#day-tabs button').count(), 3);
-    const downloadPromise = page.waitForEvent('download');
-    await page.locator('#export-trips').click();
-    const download = await downloadPromise;
-    const fs = require('node:fs');
-    const backup = fs.readFileSync(await download.path(), 'utf8');
-    const parsed = JSON.parse(backup);
-    assert.ok(parsed);
-    const beforeInvalid = await page.locator('#trip-list').innerText();
-    await upload('broken.json', '{broken');
-    await page.waitForTimeout(100);
-    assert.equal(await page.locator('#trip-list').innerText(), beforeInvalid);
-    await upload('bad-shape.json', JSON.stringify({ trips: [{ name: payload, days: 999999 }] }));
-    await page.waitForTimeout(100);
-    assert.equal(await page.locator('#trip-list').innerText(), beforeInvalid);
-    const malicious = JSON.parse(backup);
-    malicious.trips[0].name = payload;
-    malicious.trips[0].days[0][0].place = payload;
-    await upload('oversized.json', ' '.repeat(5 * 1024 * 1024 + 1));
-    await page.waitForTimeout(100);
-    assert.equal(await page.locator('#trip-list').innerText(), beforeInvalid);
-    const badDays = JSON.parse(backup); badDays.trips[0].dayCount = 31;
-    await upload('bad-days.json', JSON.stringify(badDays));
-    await page.waitForTimeout(100);
-    assert.equal(await page.locator('#trip-list').innerText(), beforeInvalid);
-    const apiRejects = await page.evaluate(() => {
-      const before = JSON.stringify(window.TripPlanner.getTrips());
-      try { window.TripPlanner.replaceTrips([{ bad: true }]); }
-      catch { return before === JSON.stringify(window.TripPlanner.getTrips()); }
-      return false;
-    });
-    assert.equal(apiRejects, true);
-    await upload('backup.json', JSON.stringify(malicious));
-    await page.waitForTimeout(100);
-    assert.equal(await page.locator('#trip-list button').count(), 2);
-    assert.equal(await page.evaluate(() => window.__xss), undefined);
-    assert.equal(await page.locator('#trip-list img, #activity-list img').count(), 0);
-    await page.locator('#day-tabs button').nth(1).click();
-    await addActivity('10:00', '第二天散步');
-    assert.match(await page.locator('#activity-list').innerText(), /第二天散步/);
-    await page.locator('#day-tabs button').first().click();
-    assert.doesNotMatch(await page.locator('#activity-list').innerText(), /第二天散步/);
-    await createTrip('第二個旅程');
-    assert.equal(await page.locator('#trip-list button').count(), 3);
-    page.once('dialog', d => d.accept());
-    await page.locator('#delete-trip').click();
-    assert.equal(await page.locator('#trip-list button').count(), 2);
-    await page.locator('[data-destination="kyoto"]').click();
-    assert.ok(await page.locator('#detail-dialog').evaluate(d => d.open));
-    await page.keyboard.press('Escape');
-    assert.equal(await page.locator('#detail-dialog').evaluate(d => d.open), false);
-    await page.locator('#trip-name').focus();
-    await page.keyboard.press('Tab');
-    assert.equal(await page.evaluate(() => document.activeElement.id), 'trip-destination');
-    for (const width of [390, 320]) {
-      await page.setViewportSize({ width, height: 844 });
-      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Horizontal overflow at ${width}px`);
-      await page.locator('#planner').scrollIntoViewIfNeeded();
-      assert.ok(await page.locator('#trip-form button[type="submit"]').isVisible());
-    }
-    assert.deepEqual(errors, []);
-    console.log('PASS: create, day isolation, automatic time sorting, activity editing/deletion, persistence, export/import, malformed import preservation, XSS protection, deletion, keyboard, mobile layout.');
-    const blocked = await browser.newContext();
-    await blocked.addInitScript(() => { Object.defineProperty(window, 'localStorage', { get() { throw new Error('Storage unavailable'); } }); });
-    const blockedPage = await blocked.newPage();
-    await blockedPage.goto(url);
-    assert.match(await blockedPage.locator('#storage-status').innerText(), /無法|不可|未|失敗/);
-    console.log('PASS: localStorage unavailable produces explicit warning.');
-    await blocked.close();
-  } finally { await browser.close(); }
-})().catch(error => { console.error(error); process.exitCode = 1; });
+// Mock-authenticated browser tests; real Google OAuth and RLS require separate integration acceptance.
+const fs = require('node:fs');
+const {browser,assert,URL_BASE,mockBackend,login,ensureLocked}=require('./helpers.cjs');
+(async()=>{
+ const b=await browser();const context=await b.newContext({viewport:{width:1440,height:1000},acceptDownloads:true});const p=await context.newPage();const errors=[];p.on('pageerror',e=>errors.push(e.message));await mockBackend(context);p.on('dialog',d=>d.accept());
+ const add=async(start,end,place,period='morning')=>{await p.locator('#activity-start').fill(start);await p.locator('#activity-end').fill(end);await p.locator('#activity-place').fill(place);await p.locator('#activity-period').selectOption(period);await p.locator('#activity-submit').click();};
+ const upload=async(name,text)=>p.locator('#import-file').setInputFiles({name,mimeType:'application/json',buffer:Buffer.from(text)});
+ try{
+  await p.goto(URL_BASE);await ensureLocked(p);
+  await p.evaluate(()=>{document.querySelector('#activity-start').value='09:00';document.querySelector('#activity-end').value='10:00';document.querySelector('#activity-place').value='未登入不得新增';document.querySelector('#activity-form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));document.querySelector('#add-custom-field').click();});
+  await ensureLocked(p);assert.equal(await p.locator('#custom-fields input').count(),0);
+  await login(p);assert.equal(await p.locator('#day-tabs button').count(),5);assert.match(await p.locator('#day-tabs').innerText(),/10 \/ 21[\s\S]*10 \/ 25/);assert.equal(await p.locator('.period-section').count(),3);
+  await add('10:00','09:00','不合法時間');assert.equal(await p.locator('.activity-card').count(),0);
+  await p.locator('#activity-shopping').fill('明太子\n手信');await p.locator('#activity-notes').fill('先預約');await p.locator('#activity-category').selectOption('購物');await p.locator('#add-custom-field').click();await p.getByRole('textbox',{name:'自訂欄位名稱',exact:true}).fill('預約號碼');await p.getByRole('textbox',{name:'自訂欄位內容',exact:true}).fill('ABC123');
+  await add('14:00','15:00','購物時間','noon');assert.match(await p.locator('.activity-card').innerText(),/明太子[\s\S]*ABC123/);
+  await p.getByRole('button',{name:'編輯活動：購物時間',exact:true}).click();assert.equal(await p.locator('#activity-shopping').inputValue(),'明太子\n手信');await p.locator('#activity-place').fill('博多購物');await p.locator('#activity-submit').click();assert.equal(await p.locator('.activity-card').count(),1);
+  await p.getByRole('button',{name:'編輯活動：博多購物',exact:true}).click();await p.locator('#activity-place').fill('取消修改');await p.locator('#activity-cancel').click();assert.doesNotMatch(await p.locator('#activity-list').innerText(),/取消修改/);
+  await p.getByRole('checkbox',{name:'標記完成：博多購物',exact:true}).check();assert.ok(await p.locator('.activity-card').evaluate(e=>e.classList.contains('is-completed')));
+  let card=p.locator('.activity-card');await card.locator('.transfer-day').selectOption('1');await card.locator('.transfer-period').selectOption('evening');await p.getByRole('button',{name:'複製活動：博多購物',exact:true}).click();assert.equal(await p.locator('.activity-card').count(),1);
+  await p.locator('#day-tabs button').nth(1).click();assert.equal(await p.locator('[data-period="evening"] .activity-card').count(),1);await p.locator('.activity-card .transfer-day').selectOption('2');await p.getByRole('button',{name:'移動活動：博多購物',exact:true}).click();assert.equal(await p.locator('.activity-card').count(),0);
+  await p.locator('#day-tabs button').nth(2).click();assert.equal(await p.locator('.activity-card').count(),1);await p.getByRole('button',{name:'刪除活動：博多購物',exact:true}).click();assert.equal(await p.locator('.activity-card').count(),0);
+  await p.locator('#day-tabs button').first().click();const payload='<img src=x onerror="window.__xss=1">';await add('09:00','10:00',payload);await add('08:00','08:30','早餐');assert.match(await p.locator('[data-period="morning"]').innerText(),/早餐[\s\S]*<img/);assert.equal(await p.locator('#activity-list img').count(),0);assert.equal(await p.evaluate(()=>window.__xss),undefined);
+  const downloadP=p.waitForEvent('download');await p.locator('#export-trips').click();const backup=fs.readFileSync(await(await downloadP).path(),'utf8');assert.equal(JSON.parse(backup).version,2);
+  const before=await p.evaluate(()=>JSON.stringify(window.TripPlanner.getTrips()));
+  for(const [name,data] of [['bad.json','{broken'],['big.json',' '.repeat(5*1024*1024+1)],['shape.json',JSON.stringify({version:2,trips:[]})]]){await upload(name,data);await p.waitForTimeout(100);assert.equal(await p.evaluate(()=>JSON.stringify(window.TripPlanner.getTrips())),before);}
+  const bad=JSON.parse(backup);bad.trips[0].days[0][0].endTime='01:00';await upload('bad-time.json',JSON.stringify(bad));await p.waitForTimeout(100);assert.equal(await p.evaluate(()=>JSON.stringify(window.TripPlanner.getTrips())),before);
+  const imported=JSON.parse(backup);imported.trips[0].days[0][0].fields=[{label:payload,value:'<script>window.__xss=2</script>'}];await upload('valid.json',JSON.stringify(imported));await p.waitForTimeout(100);assert.equal(await p.locator('#activity-list script,#activity-list img').count(),0);assert.equal(await p.evaluate(()=>window.__xss),undefined);
+  await p.reload();await p.waitForFunction(()=>!document.querySelector('#private-app').hidden);assert.equal(await p.locator('.activity-card').count(),3);
+  await p.locator('#activity-place').focus();await p.keyboard.press('Tab');assert.equal(await p.evaluate(()=>document.activeElement.id),'activity-shopping');
+  for(const width of [390,320]){await p.setViewportSize({width,height:844});assert.ok(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`overflow at ${width}`);assert.ok(await p.locator('#activity-submit').isVisible());}
+  await p.locator('#activity-place').fill('登出必須清除');await p.locator('#activity-shopping').fill('私密清單');await p.locator('#add-custom-field').click();await p.locator('#sign-out').click();await ensureLocked(p);assert.equal(await p.locator('#activity-place').inputValue(),'');assert.equal(await p.locator('#activity-shopping').inputValue(),'');assert.equal(await p.locator('#custom-fields input').count(),0);assert.equal(await p.evaluate(()=>Object.keys(sessionStorage).some(k=>k.startsWith('trip-private-session'))),false);assert.deepEqual(errors,[]);
+  await login(p);
+  await p.evaluate(()=>{const original=Storage.prototype.setItem;Storage.prototype.setItem=function(key,value){if(key.startsWith('trip-private-session'))throw new Error('quota');return original.call(this,key,value);};});
+  await add('09:00','10:00','儲存失敗測試');
+  assert.match(await p.locator('#storage-status').innerText(),/無法儲存/);
+  await p.locator('#sign-out').click();await ensureLocked(p);
+  console.log('PASS (mock Google): auth gate, fixed five days, periods, times, shopping/custom fields, edit/cancel/delete/copy/move/completion, XSS, JSON safety, session restore, logout clearing, keyboard/mobile.');
+ }finally{await b.close()}
+})().catch(e=>{console.error(e);process.exitCode=1});
