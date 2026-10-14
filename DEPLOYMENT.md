@@ -76,6 +76,10 @@ supabase functions deploy link-import --use-api --project-ref lezobidxashxirzijv
 | Qwen | `QWEN_MODEL_URL` | `QWEN_MODEL_KEY` | `QWEN_MODEL_NAME` |
 | Llama | `LLAMA_MODEL_URL` | `LLAMA_MODEL_KEY` | `LLAMA_MODEL_NAME` |
 
+本環境使用 OpenRouter：兩個端點皆為 `https://openrouter.ai/api/v1/chat/completions`，模型名稱分別為 `qwen/qwen3-30b-a3b-instruct-2507` 與 `meta-llama/llama-3.3-70b-instruct`。兩個 `MODEL_KEY` 可沿用同一把 OpenRouter key，僅存於 Supabase Edge Function secrets；不要放到瀏覽器設定。模型服務需有可用額度。
+
+OpenRouter 的兩個模型請求使用其支援的 JSON 回應格式；其他供應商不附帶這項參數。回應僅接受 JSON 或完整外層 JSON 程式碼框，再逐字核對來源；額外正文、推理文字、截斷或無法解析的內容都安全降級，不從任意文字中猜取 JSON。
+
 端點由部署者指定，瀏覽器不能指定模型伺服器；TLS 驗證保留，模型請求不跟隨重新導向。可選 `LINK_IMPORT_ORIGINS` 設定逗號分隔的精確網站 origin；預設允許 GitHub Pages origin 與 localhost／127.0.0.1 的 3000 埠。若採用其他部署網域，需增列 origin。
 
 擷取僅接受白名單的 Google Maps、Threads 與 Instagram HTTPS URL，逐次檢查重新導向，限制下載大小與逾時。僅整理公開頁面提供的標題與描述，不登入來源、不讀私人貼文。短網址只有重新導向至允許的同平台網址才會繼續。來源可能因反爬蟲、登入頁或缺少 metadata 而無法取得資料；此時使用者須自行查閱來源並填寫空白草稿。

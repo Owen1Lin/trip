@@ -9,7 +9,7 @@ function result(url,model='metadata') {
  return {sourceUrl:url,platform:url.includes('instagram')?'instagram':url.includes('threads')?'threads':'google-maps',title:'公開旅行分享',evidence:`公開描述：博多散步 ${malicious}`,draft:{place:'',notes:`公開描述：博多散步 ${malicious}`,category:'自訂'},missing:['place','date','period','startTime','endTime'],modelUsed:model,warning:''};
 }
 (async()=>{
- const {validatePublicUrl,extractMetadata,groundModelDraft,fetchPublicMetadata}=await import('../supabase/functions/link-import/core.mjs');
+ const {validatePublicUrl,extractMetadata,groundModelDraft,fetchPublicMetadata,parseModelContent}=await import('../supabase/functions/link-import/core.mjs');
  for(const url of Object.values(SOURCES))assert.ok(validatePublicUrl(url).platform);
  for(const url of ['https://127.0.0.1/','https://www.instagram.com.evil.example/p/a/','https://user:pass@www.instagram.com/p/a/','http://www.instagram.com/p/a/','https://www.google.com/search?q=trip'])assert.throws(()=>validatePublicUrl(url));
  const metadata=extractMetadata('<meta property="og:title" content="博多散步"><meta content="拉麵 &amp; 神社" name="description">');assert.equal(metadata.description,'拉麵 & 神社');
@@ -34,12 +34,12 @@ function result(url,model='metadata') {
  const env={SUPABASE_URL:'https://backend.testing',SUPABASE_ANON_KEY:'fake-public-key'};
  global.Deno={env:{get:key=>env[key]},serve:fn=>{handler=fn;}};
  await import('../supabase/functions/link-import/index.ts');
- let member=true,modelOutput={},modelFailure=false,backendCalls=[];
+ let member=true,modelOutput={},modelContent=null,modelFailure=false,backendCalls=[];
  global.fetch=async(url,options={})=>{
   const target=String(url);backendCalls.push({url:target,options});
   if(target.endsWith('/rpc/is_private_trip_member'))return Response.json(member);
-  if(target==='https://models.testing/completions'&&modelFailure)throw new Error('Model timeout');
-  if(target==='https://models.testing/completions')return Response.json({choices:[{message:{content:JSON.stringify(modelOutput)}}]});
+  if(['https://models.testing/completions','https://openrouter.ai/api/v1/chat/completions','https://openrouter.ai.evil.example/completions'].includes(target)&&modelFailure)throw new Error('Model timeout');
+  if(['https://models.testing/completions','https://openrouter.ai/api/v1/chat/completions','https://openrouter.ai.evil.example/completions'].includes(target))return Response.json({choices:[{message:{content:modelContent===null?JSON.stringify(modelOutput):modelContent}}]});
   if(target===MAPS_LITERAL_URL)return new Response(GENERIC_MAPS_HTML,{headers:{'content-type':'text/html'}});
   if(Object.values(SOURCES).includes(target))return new Response('<meta property="og:title" content="博多散步"><meta property="og:description" content="拉麵 &amp; 神社">',{headers:{'content-type':'text/html'}});
   throw new Error('Unexpected backend fetch '+target);
@@ -57,7 +57,21 @@ function result(url,model='metadata') {
    modelOutput={place:{value:'虛構景點',quote:'虛構景點'},date:'2026-10-21',startTime:'09:00'};let response=await(await edge({url:SOURCES.maps,model})).json();assert.equal(response.modelUsed,model);assert.equal(response.draft.place,'');assert.equal(response.draft.date,undefined);assert.equal(response.draft.startTime,undefined);
    modelOutput={place:{value:'博多',quote:'博多散步'}};response=await(await edge({url:SOURCES.maps,model})).json();assert.equal(response.draft.place,'博多');assert.ok(response.missing.includes('date'));assert.equal(backendCalls.filter(call=>call.url==='https://models.testing/completions').at(-1).options.redirect,'error');
   }
-  modelFailure=true;const degraded=await(await edge({url:SOURCES.maps,model:'qwen'})).json();assert.equal(degraded.modelUsed,'metadata');assert.match(degraded.warning,/無法/);assert.equal(degraded.draft.notes,'拉麵 & 神社');
+  for(const model of ['qwen','llama']){
+   const response=await(await edge({url:MAPS_LITERAL_URL,model})).json();assert.equal(response.modelUsed,model);assert.equal(response.draft.place,'燒肉垂榕');assert.equal(response.draft.notes,'');assert.match(response.evidence,/來源連結：https:/);assert.equal(response.sourceUrl,MAPS_LITERAL_URL);const call=backendCalls.filter(item=>item.url==='https://models.testing/completions').at(-1),payload=JSON.parse(call.options.body),input=JSON.parse(payload.messages[1].content);assert.equal(input.publicMetadata,'燒肉垂榕');assert.equal(input.publicMetadata.includes('https:'),false);assert.ok(response.missing.includes('place'));
+  }
+  const completeFence='```json\n'+JSON.stringify({place:{value:'博多',quote:'博多散步'},notes:{value:'虛構',quote:'虛構'},date:'2026-10-21',startTime:'09:00'})+'\n```';
+  for(const content of [completeFence,completeFence.replace('```json','```'),completeFence.replaceAll('\n','\r\n')]){
+   modelContent=content;const fenced=await(await edge({url:SOURCES.maps,model:'qwen'})).json();assert.equal(fenced.modelUsed,'qwen');assert.equal(fenced.draft.place,'博多');assert.equal(fenced.draft.notes,'拉麵 & 神社');assert.equal(fenced.draft.date,undefined);assert.equal(fenced.draft.startTime,undefined);assert.ok(parseModelContent(content).place);
+  }
+  for(const content of ['', '{"place":', completeFence+'\nExtra prose', 'Extra prose\n'+completeFence,completeFence.slice(0,-3),'<think>reasoning</think>\n'+completeFence]){
+   modelContent=content;const fallback=await(await edge({url:SOURCES.maps,model:'qwen'})).json();assert.equal(fallback.modelUsed,'metadata');assert.equal(fallback.draft.place,'');assert.equal(fallback.draft.notes,'拉麵 & 神社');assert.match(fallback.warning,/無法/);for(const field of ['date','period','startTime','endTime'])assert.equal(fallback.draft[field],undefined);
+  }
+  modelContent=null;
+  for(const [model,endpoint,expected] of [['qwen','https://openrouter.ai/api/v1/chat/completions',{type:'json_object'}],['llama','https://openrouter.ai/api/v1/chat/completions',{type:'json_object'}],['qwen','https://models.testing/completions',undefined],['qwen','https://openrouter.ai.evil.example/completions',undefined]]){
+   env[model.toUpperCase()+'_MODEL_URL']=endpoint;modelOutput={place:{value:'博多',quote:'博多散步'}};const response=await(await edge({url:SOURCES.maps,model})).json();assert.equal(response.modelUsed,model);const call=backendCalls.filter(item=>item.url===endpoint).at(-1),payload=JSON.parse(call.options.body);assert.deepEqual(payload.response_format,expected);assert.equal(payload.reasoning,undefined);assert.match(payload.messages[0].content,/notes at most 200/);assert.equal(JSON.parse(payload.messages[1].content).publicMetadata,metadata.evidence);
+  }
+  env.QWEN_MODEL_URL='https://models.testing/completions';modelFailure=true;const degraded=await(await edge({url:SOURCES.maps,model:'qwen'})).json();assert.equal(degraded.modelUsed,'metadata');assert.match(degraded.warning,/無法/);assert.equal(degraded.draft.notes,'拉麵 & 神社');
  }finally{global.fetch=originalFetch;if(originalDeno===undefined)delete global.Deno;else global.Deno=originalDeno;}
  const b=await browser(); const c=await b.newContext({viewport:{width:1440,height:1000}}); const p=await c.newPage(); const errors=[];p.on('pageerror',e=>errors.push(e.message));await mockBackend(c);p.on('dialog',d=>d.accept());
  let status=200,reply=null,delay=null,hit=null; const requests=[];

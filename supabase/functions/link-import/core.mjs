@@ -44,6 +44,14 @@ export function groundModelDraft(output, metadata) {
   }
   return next;
 }
+export function parseModelContent(content) {
+  if (typeof content !== 'string') throw new Error('Missing model content');
+  const trimmed=content.trim();
+  // Accept only JSON or a single complete outer JSON code fence. Never search
+  // prose/reasoning for a JSON-looking fragment or discard a <think> section.
+  const fence=trimmed.match(/^```(?:json)?[\t ]*\r?\n([\s\S]*?)\r?\n```$/i);
+  return JSON.parse(fence ? fence[1] : trimmed);
+}
 export async function fetchPublicMetadata(input, fetcher = fetch) {
   let current = validatePublicUrl(input);
   const signal = AbortSignal.timeout(12000);
