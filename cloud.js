@@ -49,9 +49,9 @@
       || !data.refresh_token || !Number.isFinite(Number(data.expires_at))) throw rejected('登入資訊不完整，請重新登入。');
     return { access_token: data.access_token, refresh_token: data.refresh_token, expires_at: Number(data.expires_at) };
   }
-  async function request(path, { method = 'GET', body, auth = true, headers = {} } = {}) {
+  async function request(path, { method = 'GET', body, auth = true, headers = {}, timeoutMs = 20000 } = {}) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000);
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await fetch(config.url.replace(/\/$/, '') + path, {
         method, signal: controller.signal,
@@ -120,7 +120,15 @@
       throw error;
     }
   }
-  window.TripAuth = Object.freeze({ requireMembership });
+  async function importPublicLink({ url, model }) {
+    const attempt = generation;
+    await requireMembership();
+    if (attempt !== generation) throw rejected('登入狀態已變更，請重新登入。');
+    const result = await request('/functions/v1/link-import', { method: 'POST', body: { url, model }, timeoutMs: 50000 });
+    if (attempt !== generation) throw rejected('登入狀態已變更，請重新登入。');
+    return result;
+  }
+  window.TripAuth = Object.freeze({ requireMembership, importPublicLink });
   function renderLogin(text = '') {
     panel.replaceChildren();
     const button = element('button', '使用 Google 帳號登入', 'google-sign-in');

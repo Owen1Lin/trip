@@ -155,6 +155,7 @@ $('#import-file').addEventListener('change', async event => {
 function lock() {
   if (session) { try { sessionStorage.removeItem(keyFor(session)); } catch {} }
   sessionGeneration++; session=null; trip=null; activeDay=0;
+  window.dispatchEvent(new CustomEvent('trip-planner-locked'));
   resetEditor(); $('#day-tabs').replaceChildren(); $('#activity-list').replaceChildren(); $('#day-summary').textContent=''; $('#storage-status').textContent=''; $('#sync-status').textContent=''; $('#account-email').textContent=''; $('#account-email').className='account-email'; $('#import-file').value=''; $('#toast').textContent=''; $('#toast').classList.remove('visible'); clearTimeout(toast.timer);
   $('#private-app').hidden=true; $('#private-app').inert=true; $('#auth-screen').hidden=false;
 }
@@ -175,6 +176,22 @@ async function unlock() {
   return { restoredDraft };
 }
 
-window.TripPlanner=Object.freeze({ unlock,lock,getTrips:()=>{requireAuth();return structuredClone([trip]);},validateTrips,replaceTrips:trips=>{requireAuth();const validated=validateTrips(trips);trip=validated[0];activeDay=0;resetEditor();changed();} });
+function addImportedDraft(draft) {
+  requireAuth();
+  if (!draft || draft.confirmed !== true) throw new Error('請確認日期、時段及起訖時間後再加入。');
+  const dates = ['2026-10-21','2026-10-22','2026-10-23','2026-10-24','2026-10-25'];
+  const day = dates.indexOf(draft.date);
+  if (day < 0) throw new Error('請選擇這次旅行的日期。');
+  if (!Object.hasOwn(PERIODS,draft.period)) throw new Error('請確認活動時段。');
+  if (!time(draft.startTime)||!time(draft.endTime)||draft.endTime<=draft.startTime) throw new Error('請確認起訖時間；結束須晚於開始，跨日請分開填寫。');
+  if (trip.days[day].length>=100) throw new Error('每天最多 100 個活動。');
+  let source;
+  try { source = new URL(draft.sourceUrl); } catch { throw new Error('來源連結格式不正確。'); }
+  if (source.protocol!=='https:'||source.username||source.password||source.href.length>1000) throw new Error('來源連結格式不正確。');
+  const activity = { id:newId(), startTime:draft.startTime,endTime:draft.endTime,period:draft.period,category:draft.category,place:draft.place,shopping:draft.shopping || '',notes:draft.notes || '',completed:false,createdBy:currentActor(),updatedBy:currentActor(),fields:[{label:'匯入來源',value:source.href}] };
+  const candidate=structuredClone(trip); candidate.days[day].push(activity);
+  trip=validateTrips([candidate])[0]; activeDay=day; resetEditor(); changed();
+}
+window.TripPlanner=Object.freeze({ unlock,lock,addImportedDraft,getTrips:()=>{requireAuth();return structuredClone([trip]);},validateTrips,replaceTrips:trips=>{requireAuth();const validated=validateTrips(trips);trip=validated[0];activeDay=0;resetEditor();changed();} });
 lock();
 })();

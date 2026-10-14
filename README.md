@@ -10,6 +10,14 @@
 
 兩位授權成員使用同一份雲端行程快照。同步不是即時多人編輯，遇到其他裝置已更新時，需要先取得最新資料再處理修改。請在覆蓋或匯入前備份。
 
+## 公開連結匯入
+
+登入後可貼上 Google Maps、Threads 或 Instagram 連結，讀取可取得的公開標題與描述，整理成可編輯草稿。可選公開資料、Qwen 或 Llama；模型僅協助整理有來源依據的內容。來源不提供的資訊標示「待確認」，不會推測活動日期或將營業時間當成行程時間。
+
+請核對草稿，選擇五天內的日期、早中晚時段、開始與結束時間，勾選確認後才加入行程。來源連結保留於活動自訂欄位；加入後請按「儲存到雲端」。草稿尚未加入前只在頁面記憶體中，重新整理或登出會清除。
+
+公開擷取需要部署 Supabase `link-import` Edge Function；Qwen／Llama 需要伺服器端模型設定。來源網站限制存取、需登入或尚未部署服務時，會明確提示並提供手動草稿；這不表示已取得公開資料。部署及限制見 [DEPLOYMENT.md](DEPLOYMENT.md)。
+
 登入前不載入私人行程；登出後清除畫面及編輯表單。登入草稿以 `sessionStorage` 暫存在本次瀏覽器分頁；重新整理會保留有效草稿，登出清除。瀏覽器暫存並非加密保險箱，關閉分頁或清除網站資料可能移除尚未同步的變更；公共裝置使用後請登出並清除網站資料。儲存失敗時請依提示匯出備份。
 
 ## 開發與部署
@@ -25,11 +33,12 @@ python3 -m http.server 3000 --bind 0.0.0.0
 
 ## 審查與驗收
 
-三位 AI 協作角色與流程見 [TEAM.md](TEAM.md)。測試環境需提供 Node.js、Playwright 及 Chromium，啟動上述靜態服務後執行：
+三位 AI 協作角色與流程見 [TEAM.md](TEAM.md)。測試環境需提供 Node.js 24、Playwright 及 Chromium，啟動上述靜態服務後執行：
 
 ```sh
 node tests/planner.test.cjs
 node tests/cloud.test.cjs
+node tests/link-import.test.cjs
 ```
 
 可用 `TEST_URL` 指定服務網址、`CHROMIUM_PATH` 指定 Chromium 路徑。瀏覽器測試使用模擬登入及 API；它不能證明真實 Google 登入、Supabase 成員權限、兩人共享或正式部署已驗證。正式驗收需以兩個授權 Gmail 帳號與一個非成員帳號實際測試。

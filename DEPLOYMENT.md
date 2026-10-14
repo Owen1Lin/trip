@@ -59,6 +59,31 @@ Client Secret 只填在 Supabase 後台，不要放進程式碼、GitHub 或聊�
 
 姓名色彩標記方便協作，不是不可竄改的活動稽核。資料庫記錄的最後寫入者 UUID 由後端觸發器產生。
 
+## 公開連結擷取與模型
+
+GitHub Pages 無法安全保管模型金鑰，也不能直接跨來源擷取這些網站。請在同一個 Supabase 專案部署 `supabase/functions/link-import/`：
+
+```sh
+supabase functions deploy link-import --project-ref lezobidxashxirzijveb
+```
+
+函式使用 Edge Function 內建 `SUPABASE_URL`、`SUPABASE_ANON_KEY`，將登入者 JWT 傳至 `is_private_trip_member()` RPC 驗證 Google OAuth 與會員；不使用 service role 繞過 RLS。若專案的新 JWT 簽署方式與平台 legacy JWT gate 不相容，可使用 `--no-verify-jwt` 部署；函式內仍須以 RPC 驗證，不能移除會員檢查。
+
+可於 Supabase Edge Function secrets 設定以下伺服器變數，勿填入 `cloud-config.js`、聊天或公開 GitHub：
+
+| 模型 | HTTPS OpenAI-compatible chat/completions 完整端點 | API 金鑰 | 實際模型名稱 |
+| --- | --- | --- | --- |
+| Qwen | `QWEN_MODEL_URL` | `QWEN_MODEL_KEY` | `QWEN_MODEL_NAME` |
+| Llama | `LLAMA_MODEL_URL` | `LLAMA_MODEL_KEY` | `LLAMA_MODEL_NAME` |
+
+端點由部署者指定，瀏覽器不能指定模型伺服器；TLS 驗證保留，模型請求不跟隨重新導向。可選 `LINK_IMPORT_ORIGINS` 設定逗號分隔的精確網站 origin；預設允許 GitHub Pages origin 與 localhost／127.0.0.1 的 3000 埠。若採用其他部署網域，需增列 origin。
+
+擷取僅接受白名單的 Google Maps、Threads 與 Instagram HTTPS URL，逐次檢查重新導向，限制下載大小與逾時。僅整理公開頁面提供的標題與描述，不登入來源、不讀私人貼文。短網址只有重新導向至允許的同平台網址才會繼續。來源可能因反爬蟲、登入頁或缺少 metadata 而無法取得資料；此時使用者須自行查閱來源並填寫空白草稿。
+
+模型只接收公開 metadata；其輸出必須符合原始來源文字才能採用。未設定模型或模型失敗時保留公開資料草稿並提示，不能宣稱模型成功。日期、時段與起訖時間不由模型產生，使用者須自行填寫及確認。名稱若無法從來源核實也留空。
+
+前端與函式部署是兩個步驟。GitHub main 推送不會部署 Edge Function 或設定模型金鑰。部署後需以授權會員驗證三個真實公開來源、模型連線、非會員拒絕與無法讀取時的手動流程；fixtures 與模擬瀏覽器測試不能取代這些檢查。
+
 ## GitHub 驗收與部署
 
 `main` 更新會執行瀏覽器操作與登入／同步模擬驗收；通過後發布登入保護的頁面。獨立的 `cloud-readiness` job 檢查真實 Google Provider 與匿名資料庫防護，未設定完成會顯示失敗。這項失敗不會阻擋先發布登入保護畫面，以免舊版公開操作介面繼續在線。
