@@ -14,6 +14,10 @@ const emptyTrip = () => ({ id: 'fukuoka-20261021', name: '福岡＆九州五日�
 let session = null, trip = null, activeDay = 0, editingId = null;
 let sessionGeneration = 0;
 let preservedDraftKey = null;
+let quickBatch = null, quickSource = null;
+const endOffset = activity => activity.endDayOffset === undefined ? 0 : activity.endDayOffset;
+const validTiming = activity => (activity.startTime === '' || time(activity.startTime)) && (activity.endTime === '' || time(activity.endTime)) && [0,1].includes(endOffset(activity)) && (!activity.endTime ? endOffset(activity) === 0 : Boolean(activity.startTime) && (endOffset(activity) === 1 || activity.endTime > activity.startTime));
+const followingDate = date => { const value = new Date(`${date}T00:00:00Z`); value.setUTCDate(value.getUTCDate()+1); return value.toISOString().slice(0,10); };
 const newId = () => crypto.randomUUID();
 const authorized = () => session !== null;
 function requireAuth() { if (!authorized()) throw new Error('請先以獲授權的 Google 帳號登入。'); }
@@ -33,13 +37,13 @@ function validateTrips(trips) {
   const days = input.days.map(day => {
     if (!Array.isArray(day) || day.length > 100) fail();
     return day.map(activity => {
-      if (!activity || typeof activity.id !== 'string' || !/^[a-zA-Z0-9_-]{1,80}$/.test(activity.id) || ids.has(activity.id) || !(activity.startTime === '' || time(activity.startTime)) || !(activity.endTime === '' || time(activity.endTime)) || (activity.endTime !== '' && (!activity.startTime || activity.endTime <= activity.startTime)) || !['morning','afternoon','pending','noon','evening'].includes(activity.period) || !CATEGORIES.includes(activity.category) || !text(activity.place, 150) || !text(activity.shopping, 2000, true) || !text(activity.notes, 5000, true) || typeof activity.completed !== 'boolean' || !Array.isArray(activity.fields) || activity.fields.length > 20) fail();
+      if (!activity || typeof activity.id !== 'string' || !/^[a-zA-Z0-9_-]{1,80}$/.test(activity.id) || ids.has(activity.id) || !validTiming(activity) || !['morning','afternoon','pending','noon','evening'].includes(activity.period) || !CATEGORIES.includes(activity.category) || !text(activity.place, 150) || !text(activity.shopping, 2000, true) || !text(activity.notes, 5000, true) || typeof activity.completed !== 'boolean' || !Array.isArray(activity.fields) || activity.fields.length > 20) fail();
       if (!Object.hasOwn(ACTOR_NAMES, attribution(activity.createdBy)) || !Object.hasOwn(ACTOR_NAMES, attribution(activity.updatedBy))) fail();
       const notes=mergeNotes(activity.shopping,activity.notes);
       if (!text(notes,5000,true)) fail();
       ids.add(activity.id);
       const fields = activity.fields.map(field => { if (!field || !text(field.label, 60) || !text(field.value, 1000, true)) fail(); return { label: field.label.trim(), value: field.value }; });
-      return { id: activity.id, startTime: activity.startTime, endTime: activity.endTime, period: periodFor(activity.startTime), category: activity.category, place: activity.place.trim(), shopping: '', notes, completed: activity.completed, fields, createdBy: attribution(activity.createdBy), updatedBy: attribution(activity.updatedBy) };
+      return { id: activity.id, startTime: activity.startTime, endTime: activity.endTime, endDayOffset: endOffset(activity), period: periodFor(activity.startTime), category: activity.category, place: activity.place.trim(), shopping: '', notes, completed: activity.completed, fields, createdBy: attribution(activity.createdBy), updatedBy: attribution(activity.updatedBy) };
     });
   });
   return [{ ...emptyTrip(), days }];
@@ -65,7 +69,7 @@ function updateEditorDate() {
   $('#editor-date').textContent=index>=0 ? `10 月 ${21+index} 日 · 星期${['三','四','五','六','日'][index]}` : '日期待確認';
 }
 function resetEditor() {
-  editingId = null; $('#activity-form').reset(); $('#custom-fields').replaceChildren();
+  editingId = null; quickBatch = null; quickSource = null; $('#activity-form').reset(); $('#custom-fields').replaceChildren();
   $('#activity-start').value = ''; $('#activity-end').value = '';
   if ($('#activity-date')) $('#activity-date').value=DATES[activeDay];
   updateEditorDate();
@@ -77,19 +81,82 @@ function readQuickBatch() {
   if (!window.TripQuickEntry?.parseBatch) throw new Error('批次文字解析尚未準備完成，請重新整理頁面。');
   return window.TripQuickEntry.parseBatch($('#activity-text').value,{date:DATES[activeDay]});
 }
+function entryProblems(entry) {
+  const errors=[];
+  if (!text(entry.place,150)) errors.push('請填寫 1 至 150 字的行程名稱。');
+  if (!DATES.includes(entry.date)) errors.push('開始日期須在 2026/10/21 至 10/25；不同年份請核對並修改日期。');
+  if (!validTiming(entry)) errors.push('起訖時間格式不正確，或結束未晚於開始；跨日請勾選「結束於翌日」。');
+  for (const issue of entry.issues || []) {
+    if (issue.blocking === false) continue;
+    const fields=issue.fields || [issue.field];
+    const field=issue.field;
+    if (['segment','year','unknown'].includes(field)) { if(!entry.acknowledged) errors.push(issue.message); continue; }
+    const repaired=fields.some(key=>entry.edited?.[key] && (['startTime','endTime'].includes(key) ? time(entry[key]) : key==='date' ? DATES.includes(entry.date) : text(entry[key],key==='notes'?5000:150,key==='notes')));
+    if (!repaired && !(field==='endTime' && entry.endDayOffset===1 && time(entry.startTime) && time(entry.endTime))) errors.push(issue.message);
+  }
+  if (!entry.issues && entry.errors.length) {
+    for(const message of entry.errors) {
+      if (/時間|點|分鐘/.test(message)) {
+        if (!(entry.edited?.startTime && time(entry.startTime)) && !(entry.edited?.endTime && time(entry.endTime)) && !(entry.endDayOffset===1 && time(entry.startTime) && time(entry.endTime))) errors.push(message);
+      } else if(/日期|年份/.test(message)) { if(!entry.edited?.date || !DATES.includes(entry.date)) errors.push(message); }
+      else if(!entry.acknowledged) errors.push(message);
+    }
+  }
+  if (entry.crossDayNeedsConfirmation && !entry.endDayOffset && entry.endTime && entry.endTime <= entry.startTime) errors.push('請修正結束時間，或確認結束於翌日。');
+  if (!text(entry.notes || '',5000,true)) errors.push('備註最多 5000 字。');
+  return [...new Set(errors)];
+}
 function batchErrors(batch) {
-  return [...batch.errors,...batch.entries.flatMap((entry,index)=>entry.errors.map(error=>`第 ${index+1} 筆：${error}`))];
+  return [...batch.errors,...batch.entries.flatMap((entry,index)=>entryProblems(entry).map(error=>`第 ${index+1} 筆：${error}`))];
+}
+function previewSummary() {
+  if (!quickBatch) return;
+  const errors=batchErrors(quickBatch), status=$('#quick-preview-status');
+  $('#quick-preview').dataset.state=errors.length ? 'error' : 'ready';
+  status.textContent=errors.length ? `整批尚未加入；請修正或確認以下問題。${errors.join('；')}` : `將新增 ${quickBatch.entries.length} 筆活動；送出使用下方修正資料。`;
+  quickBatch.entries.forEach((entry,index)=>{
+    const target=$(`#preview-message-${index}`), problems=entryProblems(entry);
+    const pending=entry.pending.filter(message=>!(/開始時間/.test(message) && time(entry.startTime)) && !(/結束時間/.test(message) && time(entry.endTime)) && !(/日期/.test(message) && entry.edited.date) && !(/翌日|跨日/.test(message) && entry.endDayOffset===1));
+    target.dataset.state=problems.length ? 'error' : pending.length ? 'pending' : 'recognized';
+    target.textContent=[problems.length ? '格式錯誤／待確認' : pending.length ? '待確認' : '已辨識',...problems,...pending,entry.edited.date ? '日期已手動修正' : '',entry.endDayOffset===1 && entry.date && DATES.includes(entry.date) ? `跨日 +1：${entry.date} ${entry.startTime} 至 ${followingDate(entry.date)} ${entry.endTime}（日本時間）` : ''].filter(Boolean).join(' · ');
+  });
+}
+function renderQuickPreview() {
+  const container=$('#quick-preview'); container.replaceChildren();
+  container.append(node('p','preview-status','')); container.firstChild.id='quick-preview-status';
+  quickBatch.entries.forEach((entry,index)=>{
+    const item=node('section','preview-item'); item.dataset.entry=String(index);
+    item.append(node('h4','',`第 ${index+1} 筆`),node('pre','preview-source',entry.raw || entry.source || quickSource));
+    const fields=node('div','preview-fields');
+    for (const [key,title] of [['place','行程名稱'],['date','日期'],['startTime','開始時間'],['endTime','結束時間'],['notes','備註']]) {
+      const label=node('label',`form-field${key==='place' || key==='notes' ? ' preview-wide' : ''}`,title), input=node(key==='notes'?'textarea':'input');
+      input.id=`preview-${index}-${key}`; input.dataset.field=key; input.value=entry[key] || ''; input.setAttribute('aria-label',`第 ${index+1} 筆${title}`);
+      if(key==='notes') input.className='preview-notes';
+      if(key==='date') input.placeholder='2026-10-21';
+      if(key==='startTime' || key==='endTime') input.placeholder='HH:mm（可留空）';
+      input.addEventListener('input',()=>{entry[key]=input.value;entry.edited[key]=true;previewSummary();}); label.append(input);fields.append(label);
+    }
+    const nextLabel=node('label','preview-confirm'), next=node('input');next.type='checkbox';next.id=`preview-${index}-next-day`;next.checked=entry.endDayOffset===1;
+    next.addEventListener('change',()=>{entry.endDayOffset=next.checked?1:0;entry.crossDayConfirmed=next.checked;previewSummary();});nextLabel.append(next,document.createTextNode('結束於翌日（跨日 +1）'));fields.append(nextLabel);
+    if(entry.errors.length || (entry.issues || []).some(issue=>['segment','year','unknown'].includes(issue.field)) || entry.pending.some(message=>/歧義|分段|確認原文/.test(message))) {
+      const label=node('label','preview-confirm'), checkbox=node('input');checkbox.type='checkbox';checkbox.id=`preview-${index}-ack`;checkbox.className='preview-ack';
+      checkbox.addEventListener('change',()=>{entry.acknowledged=checkbox.checked;previewSummary();});label.append(checkbox,document.createTextNode('已核對完整原文及分段，並修正預覽資訊'));fields.append(label);
+    }
+    const message=node('p','preview-message');message.id=`preview-message-${index}`;item.append(fields,message);container.append(item);
+  });
+  previewSummary();
 }
 function previewQuickEntry() {
-  if (!authorized() || !$('#quick-preview')) return;
+  if (!authorized() || !$('#quick-preview') || editingId) return;
   const input=$('#activity-text')?.value || '';
-  if (!input.trim()) { $('#quick-preview').textContent='可貼入多筆活動；未寫日期沿用前一筆日期，首筆採目前選取日期；時間可稍後補充。'; delete $('#quick-preview').dataset.state; return; }
+  if(quickSource===input && quickBatch) return;
+  quickSource=input;
+  if (!input.trim()) { quickBatch=null; $('#quick-preview').textContent='可貼入多筆活動；未寫日期沿用前一筆日期，首筆採目前選取日期；時間可稍後補充。'; delete $('#quick-preview').dataset.state; return; }
   try {
-    const batch=readQuickBatch(),errors=batchErrors(batch);
-    $('#quick-preview').dataset.state=errors.length ? 'error' : 'ready';
-    const lines=batch.entries.map((entry,index)=>`第 ${index+1} 筆：${[entry.place,entry.date,entry.startTime,entry.endTime ? `至 ${entry.endTime}` : '',...new Set(entry.pending)].filter(Boolean).join(' · ')}`);
-    $('#quick-preview').textContent=[errors.length ? '請修正後再新增；整批尚未加入。' : `將新增 ${batch.entries.length} 筆活動`,...lines,...errors].join('\n');
-  } catch(error) { $('#quick-preview').textContent=error.message; $('#quick-preview').dataset.state='error'; }
+    quickBatch=readQuickBatch();
+    quickBatch.entries.forEach(entry=>{entry.edited={};entry.acknowledged=false;entry.endDayOffset=entry.endDayOffset || 0;entry.errors=entry.errors || [];entry.pending=entry.pending || [];});
+    renderQuickPreview();
+  } catch(error) { quickBatch=null; $('#quick-preview').textContent=error.message; $('#quick-preview').dataset.state='error'; }
 }
 function closeEditor() { window.TripMobileUI?.closeEditor(); window.TripMobileUI?.showView('itinerary'); }
 function startActivity() {
@@ -111,6 +178,7 @@ function edit(activity) {
   editingId = activity.id; setEditorMode(true);
   if ($('#activity-date')) $('#activity-date').value=DATES[activeDay];
   updateEditorDate();
+  if ($('#activity-next-day')) $('#activity-next-day').checked=endOffset(activity)===1;
   for (const [id, value] of Object.entries({ start: activity.startTime, end: activity.endTime, period: periodFor(activity.startTime), category: activity.category, place: activity.place, notes:activity.notes })) $(`#activity-${id}`).value = value;
   $('#custom-fields').replaceChildren(); activity.fields.forEach(field => addField(field.label, field.value));
   $('#activity-form-title').textContent = '編輯活動'; $('#activity-submit').textContent = '完成編輯'; $('#activity-cancel').hidden = false;
@@ -144,9 +212,11 @@ function render() {
       const card=node('article',`activity-card actor-${activity.createdBy}${activity.completed ? ' is-completed' : ''}`); card.dataset.activityId=activity.id;
       const details=node('details','activity-details');
       const summary=node('summary','activity-row');
-      const timing=activity.startTime ? `${activity.startTime} — ${activity.endTime || '待確認'}` : '時間待確認';
+      const timing=activity.startTime ? `${activity.startTime}–${endOffset(activity)===1 ? '翌' : ''}${activity.endTime || '待確認'}` : '時間待確認';
       summary.append(node('span','row-time',timing),node('span','row-category category-badge',activity.category),node('span','row-title',activity.place),node('span',`row-actor actor-badge actor-${activity.createdBy}`,ACTOR_NAMES[activity.createdBy]));
+      if (endOffset(activity)===1) summary.querySelector('.row-time').append(node('span','cross-day-badge','跨日 +1'));
       const content=node('div','activity-content');
+      content.append(node('p','activity-date-range',`${DATES[activeDay]} ${activity.startTime || '時間待確認'} 至 ${endOffset(activity)===1 ? followingDate(DATES[activeDay]) : DATES[activeDay]} ${activity.endTime || '時間待確認'}（日本時間）`));
       content.append(node('h4','',activity.place));
       content.append(node('span',`actor-badge actor-${activity.updatedBy}`,`${ACTOR_NAMES[activity.updatedBy]}更新`));
       if (activity.notes) content.append(node('h5','','備註'),node('p','activity-notes',activity.notes));
@@ -185,7 +255,9 @@ $('#activity-form').addEventListener('submit', event => {
   if(editingId&&!old){toast('這個活動已不存在，請確認目前行程。');return;}
   if(!old) {
     try {
-      const batch=readQuickBatch(),errors=batchErrors(batch);
+      if (!quickBatch || quickSource!==$('#activity-text').value) previewQuickEntry();
+      const batch=quickBatch; if (!batch) throw new Error('請確認預覽後再新增。');
+      const errors=batchErrors(batch);
       if(errors.length)throw new Error(errors.join('；'));
       if(!batch.entries.length)throw new Error('請至少輸入一筆活動。');
       const candidate=structuredClone(trip),actor=currentActor();
@@ -193,25 +265,21 @@ $('#activity-form').addEventListener('submit', event => {
         const day=DATES.indexOf(entry.date);
         if(day<0)throw new Error(`第 ${index+1} 筆：日期不在這次旅行範圍。`);
         if(candidate.days[day].length>=100)throw new Error(`第 ${index+1} 筆：${entry.date} 最多 100 個活動；整批尚未加入。`);
-        candidate.days[day].push({id:newId(),startTime:entry.startTime || '',endTime:entry.endTime || '',period:periodFor(entry.startTime || ''),category:$('#activity-category').value,place:entry.place,shopping:'',notes:'',completed:false,createdBy:actor,updatedBy:actor,fields:[]});
+        candidate.days[day].push({id:newId(),startTime:entry.startTime || '',endTime:entry.endTime || '',endDayOffset:entry.endDayOffset || 0,period:periodFor(entry.startTime || ''),category:$('#activity-category').value,place:entry.place,shopping:'',notes:entry.notes || '',completed:false,createdBy:actor,updatedBy:actor,fields:[]});
       }
       const validated=validateTrips([candidate])[0];
       trip=validated;activeDay=DATES.indexOf(batch.entries[0].date);resetEditor();changed();closeEditor();toast(`已新增 ${batch.entries.length} 筆活動。`);
     } catch(error){
-      toast(error.message);previewQuickEntry();
-      if ($('#quick-preview')) {
-        $('#quick-preview').dataset.state='error';
-        $('#quick-preview').textContent=$('#quick-preview').textContent.replace(/^將新增 \d+ 筆活動/,'請修正後再新增；整批尚未加入。');
-        if (!$('#quick-preview').textContent.includes(error.message)) $('#quick-preview').textContent+=`\n${error.message}`;
-      }
+      toast(error.message);previewSummary();
+      if ($('#quick-preview-status')) $('#quick-preview-status').textContent=`整批尚未加入；${error.message}`;
     }
     return;
   }
   const targetDay=DATES.indexOf($('#activity-date') ? $('#activity-date').value : DATES[activeDay]);
   if(targetDay<0){toast('請選擇這次旅行的日期。');return;}
   if(sourceDay!==targetDay&&trip.days[targetDay].length>=100){toast('每天最多 100 個活動。');return;}
-  const activity={...old,startTime:$('#activity-start').value,endTime:$('#activity-end').value,period:periodFor($('#activity-start').value),category:$('#activity-category').value,place:$('#activity-place').value.trim(),shopping:'',notes:$('#activity-notes').value,updatedBy:currentActor(),fields:[...$('#custom-fields').children].map(row=>({label:row.children[0].value.trim(),value:row.children[1].value}))};
-  if(!(activity.startTime===''||time(activity.startTime))||!(activity.endTime===''||time(activity.endTime))||(activity.endTime!==''&&(!activity.startTime||activity.endTime<=activity.startTime))){toast('結束時間必須晚於開始時間；可留空待確認，跨日請分兩天填寫。');return;}
+  const activity={...old,startTime:$('#activity-start').value,endTime:$('#activity-end').value,endDayOffset:$('#activity-next-day')?.checked ? 1 : 0,period:periodFor($('#activity-start').value),category:$('#activity-category').value,place:$('#activity-place').value.trim(),shopping:'',notes:$('#activity-notes').value,updatedBy:currentActor(),fields:[...$('#custom-fields').children].map(row=>({label:row.children[0].value.trim(),value:row.children[1].value}))};
+  if(!validTiming(activity)){toast('請確認有效起訖時間；跨日請勾選結束於翌日，未填時間可留待確認。');return;}
   const candidate=structuredClone(trip);candidate.days[sourceDay]=candidate.days[sourceDay].filter(item=>item.id!==editingId);candidate.days[targetDay].push(activity);
   try{trip=validateTrips([candidate])[0];}catch(error){toast(error.message);return;}
   activeDay=targetDay;resetEditor();changed();closeEditor();toast('活動已更新。');

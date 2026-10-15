@@ -1811,3 +1811,142 @@ body:has(#save-reminder:not([hidden])) .toast {
   outline:3px solid #b67829;
   outline-offset:3px;
 }
+
+/* Editable previews use the sheet's own scroll area so fields and actions stay reachable. */
+.preview-heading {
+  margin:20px 0 9px;
+  font-size:16px;
+}
+.quick-preview {
+  max-height:none;
+  overflow:visible;
+  padding:12px;
+  white-space:normal;
+  color:var(--ink);
+}
+.quick-preview:empty::before {
+  content:"輸入活動後，可在這裡核對並修改。";
+  color:var(--muted);
+}
+.preview-item {
+  min-width:0;
+  margin:0 0 14px;
+  padding:12px;
+  border:1px solid #d7e2d4;
+  border-radius:9px;
+  background:#fff;
+}
+.preview-item:last-child { margin-bottom:0; }
+.preview-item h4,.preview-item legend { margin:0 0 10px; font-size:14px; font-weight:650; }
+.preview-item .form-field { min-width:0; margin-bottom:12px; }
+.preview-item label { line-height:1.5; }
+.preview-fields {
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:0 10px;
+}
+.preview-fields>.preview-wide,.preview-fields>.preview-name,.preview-fields>.preview-notes {
+  grid-column:1/-1;
+}
+.quick-preview input,.quick-preview select,.quick-preview textarea {
+  width:100%;
+  min-width:0;
+  max-width:100%;
+  font-size:16px;
+  box-sizing:border-box;
+}
+.preview-source {
+  margin:8px 0 12px;
+  padding:9px;
+  max-width:100%;
+  border-radius:6px;
+  background:#f4f5f3;
+  color:#47574b;
+  font:inherit;
+  font-size:12px;
+  line-height:1.65;
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+}
+.preview-message { margin:6px 0 10px; font-size:13px; line-height:1.65; }
+.preview-message[data-state=error],.preview-item[data-state=error] .preview-message {
+  color:#924735;
+}
+.preview-item[data-state=error] { border-color:#d29785; }
+.preview-item[data-state=pending] { border-color:#d7bf86; }
+.preview-message[data-state=pending],.preview-item[data-state=pending] .preview-message {
+  color:#79541d;
+}
+.preview-rebuild-help,.overnight-help {
+  display:block;
+  margin:6px 0 14px;
+  color:#695831;
+  font-size:12px;
+  line-height:1.65;
+}
+.preview-confirm {
+  display:flex;
+  align-items:flex-start;
+  gap:9px;
+  min-height:44px;
+  padding:10px 0;
+  cursor:pointer;
+  font-size:14px;
+  line-height:1.6;
+}
+.preview-confirm input[type=checkbox] {
+  flex:0 0 20px;
+  width:20px;
+  height:20px;
+  min-height:20px;
+  margin:2px 0 0;
+  accent-color:#7750a1;
+}
+.cross-day-badge,.overnight-badge {
+  display:inline-block;
+  padding:2px 6px;
+  border:1px solid #d9caeb;
+  border-radius:5px;
+  background:#f0e8fa;
+  color:#66458b;
+  font-size:10px;
+  line-height:1.6;
+  font-weight:650;
+  white-space:nowrap;
+  vertical-align:middle;
+}
+.row-time .cross-day-badge,.row-time .overnight-badge {
+  display:table;
+  margin-top:3px;
+}
+.activity-form>.planner-actions { z-index:4; }
+.quick-preview :is(input,select,textarea,button):focus-visible {
+  outline:3px solid #b67829;
+  outline-offset:2px;
+}
+@media(max-width:359px) {
+  .quick-preview { padding:8px; }
+  .preview-item { padding:9px; }
+  .preview-fields { grid-template-columns:minmax(0,1fr); }
+}
+.preview-status {
+  margin:6px 0 10px;
+  font-size:13px;
+  line-height:1.65;
+  overflow-wrap:anywhere;
+}
+.preview-item[data-state=error] .preview-status { color:#924735; }
+.preview-item[data-state=pending] .preview-status { color:#79541d; }
+.preview-notes { white-space:pre-wrap; }
+.preview-ack { accent-color:#7750a1; }
+.quick-preview input[type=checkbox] {
+  width:20px;
+  height:20px;
+  min-height:20px;
+  flex:0 0 20px;
+  vertical-align:middle;
+}
+.preview-fields>.preview-confirm,
+.preview-fields>.form-field:has(input[data-field=date]) {
+  grid-column:1/-1;
+}

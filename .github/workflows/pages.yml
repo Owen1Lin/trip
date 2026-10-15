@@ -40,6 +40,8 @@ jobs:
           node tests/mobile-flow.test.cjs
           node tests/auth-session.test.cjs
           node tests/quick-entry.test.cjs
+          node tests/flexible-parser.test.cjs
+          node tests/flexible-flow.test.cjs
   cloud-readiness:
     runs-on: ubuntu-latest
     permissions:
