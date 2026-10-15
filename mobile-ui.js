@@ -12,6 +12,75 @@
   let resumableDraft = false;
   let pendingCloseEvents = 0;
   let currentSyncState = null;
+  let focusFrame = 0;
+  function updateKeyboardState() {
+    const viewport = window.visualViewport;
+    const layoutHeight = document.documentElement.clientHeight || window.innerHeight;
+    // Keep layout stable while focus moves to a checkbox or the submit button.
+    // The viewport expanding, rather than blur, signals keyboard dismissal.
+    const keyboard = editor.open && viewport && Math.abs((viewport.scale || 1) - 1) < 0.05 && layoutHeight - viewport.height >= 120;
+    if (keyboard) document.documentElement.dataset.editorKeyboard = 'open';
+    else document.documentElement.removeAttribute('data-editor-keyboard');
+  }
+  function textareaCaret(control) {
+    const style = getComputedStyle(control), rect = control.getBoundingClientRect();
+    const mirror = document.createElement('div');
+    mirror.setAttribute('aria-hidden', 'true');
+    for (const property of ['fontFamily','fontSize','fontWeight','fontStyle','letterSpacing','lineHeight','textTransform','textIndent','tabSize','wordBreak','direction','paddingTop','paddingRight','paddingBottom','paddingLeft','borderTopWidth','borderRightWidth','borderBottomWidth','borderLeftWidth']) mirror.style[property] = style[property];
+    Object.assign(mirror.style, { position:'fixed', left:'-100000px', top:'0', width:`${control.clientWidth + (parseFloat(style.borderLeftWidth) || 0) + (parseFloat(style.borderRightWidth) || 0)}px`, height:'auto', minHeight:'0', maxHeight:'none', boxSizing:'border-box', borderStyle:'solid', whiteSpace:'pre-wrap', overflowWrap:'break-word', visibility:'hidden', pointerEvents:'none' });
+    mirror.textContent = control.value.slice(0, control.selectionStart ?? control.value.length);
+    const marker = document.createElement('span'); marker.textContent = '\u200b'; mirror.append(marker);
+    editor.append(mirror);
+    const lineHeight = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.4;
+    let y;
+    try { y = marker.getBoundingClientRect().top - mirror.getBoundingClientRect().top; }
+    finally { mirror.remove(); }
+    return { y, lineHeight };
+  }
+  function keepEditorFocusVisible() {
+    focusFrame = 0;
+    if (!editor.open || !unlocked()) return;
+    const control = document.activeElement;
+    if (!editor.contains(control) || !control.matches('input, textarea, select') || !control.getClientRects().length) return;
+    const viewport = window.visualViewport;
+    const viewportTop = viewport?.offsetTop || 0;
+    const viewportBottom = viewportTop + (viewport?.height || window.innerHeight);
+    const sheet = editor.getBoundingClientRect();
+    const header = editor.querySelector('.editor-topbar');
+    const headerRect = header?.getBoundingClientRect();
+    const actions = editor.querySelector('.activity-form > .planner-actions');
+    const actionRect = actions?.getBoundingClientRect();
+    let top = Math.max(sheet.top, viewportTop) + 10;
+    let bottom = Math.min(sheet.bottom, viewportBottom) - 10;
+    if (headerRect && getComputedStyle(header).position === 'sticky') top = Math.max(top, headerRect.bottom + 10);
+    if (actionRect && getComputedStyle(actions).position === 'sticky' && actionRect.top < bottom && actionRect.bottom > top) bottom = Math.min(bottom, actionRect.top - 10);
+    if (bottom <= top + 20) return;
+    let rect = control.getBoundingClientRect(), targetTop = rect.top, targetBottom = rect.bottom;
+    if (control.matches('textarea')) {
+      const { y, lineHeight } = textareaCaret(control);
+      // Keep the composing line visible inside the textarea, then move only
+      // the dialog to reveal that line. Never replace text or selection: IME
+      // owns those, and a long textarea need not fit in the keyboard viewport.
+      const paddingTop = parseFloat(getComputedStyle(control).paddingTop) || 0;
+      const caretTop = y - control.scrollTop;
+      const caretBottom = caretTop + lineHeight;
+      const innerBottom = control.clientHeight - paddingTop;
+      if (caretBottom > innerBottom) control.scrollTop += caretBottom - innerBottom;
+      else if (caretTop < paddingTop) control.scrollTop -= paddingTop - caretTop;
+      rect = control.getBoundingClientRect();
+      targetTop = Math.max(rect.top, rect.top + y - control.scrollTop - lineHeight);
+      targetBottom = Math.min(rect.bottom, rect.top + y - control.scrollTop + lineHeight * 2);
+    }
+    // A tolerance prevents fractional Safari viewport updates from causing
+    // perpetual tiny scrolls. Ordinary user scrolling does not call this.
+    if (targetBottom > bottom + 2) editor.scrollTop += Math.max(0, Math.min(targetBottom - bottom, targetTop - top));
+    else if (targetTop < top - 2) editor.scrollTop -= top - targetTop;
+  }
+  function scheduleFocusVisibility() {
+    updateKeyboardState();
+    if (focusFrame) return;
+    focusFrame = requestAnimationFrame(keepEditorFocusVisible);
+  }
 
   function unlocked() { return !app.hidden && !app.inert; }
   function updateSyncIndicator(forceNeutral = false) {
@@ -47,6 +116,8 @@
   function finishClose(options = {}) {
     document.body.classList.remove('mobile-editor-open');
     document.documentElement.removeAttribute('data-mobile-editor');
+    document.documentElement.removeAttribute('data-editor-keyboard');
+    if (focusFrame) { cancelAnimationFrame(focusFrame); focusFrame = 0; }
     if (!options.preserveDraft) resumableDraft = false;
     updateNavigation();
     const opener = editorOpener;
@@ -102,6 +173,7 @@
     const focusTarget = focusOrder.map(selector => editor.querySelector(selector))
       .find(control => control && !control.disabled && !control.closest('[hidden], [inert]') && control.getClientRects().length);
     focusTarget?.focus({ preventScroll: true });
+    scheduleFocusVisibility();
     return true;
   }
   function startActivity(opener) {
@@ -120,6 +192,8 @@
       showView(button.dataset.openView || button.dataset.nav, { focus: true });
     }
   });
+  for (const event of ['focusin', 'focusout', 'input', 'select', 'compositionend']) editor.addEventListener(event, scheduleFocusVisibility);
+  document.addEventListener('selectionchange', () => { if (editor.open && editor.contains(document.activeElement)) scheduleFocusVisibility(); });
   editor.addEventListener('cancel', event => {
     event.preventDefault();
     closeEditor({ preserveDraft: true });
@@ -166,6 +240,7 @@
     const layoutHeight = document.documentElement.clientHeight || window.innerHeight;
     const bottomGap = viewport ? Math.max(0, layoutHeight - (viewport.offsetTop + viewport.height)) : 0;
     document.documentElement.style.setProperty('--mobile-viewport-bottom-gap', `${Math.round(bottomGap)}px`);
+    scheduleFocusVisibility();
   }
   window.visualViewport?.addEventListener('resize', updateViewport);
   window.visualViewport?.addEventListener('scroll', updateViewport);

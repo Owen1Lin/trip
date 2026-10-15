@@ -8,10 +8,50 @@ const source='https://www.instagram.com/p/ABC123/';
   await c.route('https://testing.supabase.co/functions/v1/link-import',r=>{const body=r.request().postDataJSON();requests.push(body);return r.fulfill({contentType:'application/json',body:JSON.stringify({sourceUrl:source,evidence:'博多公開散步',draft:{place:'博多',notes:'公開散步'},modelUsed:body.model})});});
   const noOverflow=async()=>assert.ok(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`overflow at ${width}`);
   const onScreen=async element=>{const box=await element.boundingBox();assert.ok(box&&box.y>=0&&box.y+box.height<=844,`off screen at ${width}`);};
+  // Geometry is checked against the simulated visual viewport and sticky actions,
+  // rather than isVisible(), which also accepts an almost entirely clipped field.
+  const keyboardGeometry=async(selector,textarea=false)=>{
+   const geometry=await p.evaluate(({selector,textarea})=>{
+    const field=document.querySelector(selector),editor=document.querySelector('#activity-editor'),actions=document.querySelector('#activity-form>.planner-actions');
+    const r=field.getBoundingClientRect(),sheet=editor.getBoundingClientRect(),bar=actions.getBoundingClientRect(),vv=window.visualViewport;
+    const header=document.querySelector('.editor-topbar'),headerRect=header.getBoundingClientRect();const top=Math.max(vv.offsetTop,sheet.top,getComputedStyle(header).position==='sticky'?headerRect.bottom:sheet.top),bottom=Math.min(vv.offsetTop+vv.height,sheet.bottom,getComputedStyle(actions).position==='sticky'?bar.top:sheet.bottom);
+    const hit=(x,y,target)=>{const found=document.elementFromPoint(x,y);return !!found&&(found===target||target.contains(found));};
+    const submit=document.querySelector('#activity-submit'),button=submit.getBoundingClientRect(),close=document.querySelector('[data-close-editor]').getBoundingClientRect();
+    const result={top,bottom,fieldTop:r.top,fieldBottom:r.bottom,visible:Math.min(r.bottom,bottom)-Math.max(r.top,top),focused:document.activeElement===field,buttonTop:button.top,buttonBottom:button.bottom,buttonHit:hit(button.x+button.width/2,button.y+button.height/2,submit),closeWidth:close.width,closeHeight:close.height};
+    if(textarea){
+     const style=getComputedStyle(field),mirror=document.createElement('div');
+     for(const key of ['fontFamily','fontSize','fontWeight','fontStyle','lineHeight','letterSpacing','paddingTop','paddingRight','paddingBottom','paddingLeft','borderTopWidth','borderRightWidth','borderBottomWidth','borderLeftWidth','boxSizing','wordBreak','overflowWrap','textIndent'])mirror.style[key]=style[key];
+     Object.assign(mirror.style,{position:'fixed',left:'-10000px',top:'0',width:r.width+'px',whiteSpace:'pre-wrap',visibility:'hidden'});
+     mirror.textContent=field.value.slice(0,field.selectionStart);const caret=document.createElement('span');caret.textContent='\u200b';mirror.append(caret);document.body.append(mirror);
+     result.caretTop=r.top+caret.getBoundingClientRect().top-mirror.getBoundingClientRect().top-field.scrollTop;result.lineHeight=parseFloat(style.lineHeight)||parseFloat(style.fontSize)*1.4;mirror.remove();
+    }
+    return result;
+   },{selector,textarea});
+   assert.equal(geometry.focused,true,`focus preserved at ${width}`);
+   assert.ok(geometry.visible>=(textarea?Math.min(54,geometry.lineHeight*2):28),`field clipped by keyboard/actions ${JSON.stringify(geometry)}`);
+   if(textarea)assert.ok(geometry.caretTop>=Math.max(geometry.top,geometry.fieldTop)-2&&geometry.caretTop+geometry.lineHeight<=Math.min(geometry.bottom,geometry.fieldBottom)+3,`caret clipped ${JSON.stringify(geometry)}`);
+   else assert.ok(geometry.fieldTop>=geometry.top-1&&geometry.fieldBottom<=geometry.bottom+1,`preview input clipped ${JSON.stringify(geometry)}`);
+   assert.ok(geometry.closeWidth>=44&&geometry.closeHeight>=44,`close touch target ${JSON.stringify(geometry)}`);
+   await p.locator('#activity-submit').scrollIntoViewIfNeeded();const button=await p.locator('#activity-submit').evaluate(element=>{const r=element.getBoundingClientRect(),vv=visualViewport;const hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);return{top:r.top,bottom:r.bottom,vTop:vv.offsetTop,vBottom:vv.offsetTop+vv.height,hit:hit===element||element.contains(hit)};});assert.ok(button.top>=button.vTop-1&&button.bottom<=button.vBottom+1&&button.hit,`submit obscured ${JSON.stringify(button)}`);
+  };
+
   await login(p);await noOverflow();assert.ok(await p.locator('#view-itinerary').isVisible());assert.equal(await p.locator('#view-link-import').isVisible(),false);assert.equal(await p.locator('#view-sync').isVisible(),false);await onScreen(p.locator('#day-tabs'));await onScreen(p.locator('[data-nav="add"]'));await onScreen(p.locator('.bottom-nav'));assert.equal(await p.locator('.itinerary-heading,.itinerary-end,.compact-add').count(),0);
   await openEditor(p);assert.equal(await p.evaluate(()=>document.activeElement.id),'activity-category');await p.keyboard.press('Tab');assert.equal(await p.evaluate(()=>document.activeElement.id),'activity-text');await p.locator('#activity-text').fill('手機未完成草稿 0900-1000');assert.equal(await p.locator('#activity-detail-fields').isVisible(),false);assert.equal(await p.locator('#activity-shopping,#draft-shopping').count(),0);assert.equal(await p.locator('#activity-editor').evaluate(e=>e.matches(':modal')),true);
   await p.evaluate(()=>{for(let n=0;n<2;n++){document.querySelector('[data-close-editor]').click();document.querySelector('[data-nav=add]').click();}});await p.waitForTimeout(50);assert.equal(await p.locator('#activity-editor').evaluate(e=>e.open),true);assert.equal(await p.locator('#activity-text').inputValue(),'手機未完成草稿 0900-1000');
-  if(width<768){for(const offsetTop of[0,100]){await p.evaluate(offset=>{Object.assign(window.__viewportFixture,{height:520,offsetTop:offset});window.__viewportFixture.dispatchEvent(new Event(offset?'scroll':'resize'));},offsetTop);await p.waitForFunction(offset=>parseInt(getComputedStyle(document.documentElement).getPropertyValue('--mobile-viewport-bottom-gap'))===844-(offset+520),offsetTop);assert.equal(await p.evaluate(()=>document.documentElement.clientHeight),844);const rect=await p.locator('#activity-editor').boundingBox();assert.ok(rect&&rect.y>=offsetTop-1&&rect.y+rect.height<=offsetTop+521);}}
+  if(width<768){for(const height of[370,420])for(const offsetTop of[0,100]){
+   await p.locator('#activity-text').focus();await p.evaluate(({height,offsetTop})=>{Object.assign(window.__viewportFixture,{height,offsetTop});window.__viewportFixture.dispatchEvent(new Event('resize'));window.__viewportFixture.dispatchEvent(new Event('scroll'));},{height,offsetTop});
+   await p.waitForFunction(({height,offsetTop})=>parseInt(getComputedStyle(document.documentElement).getPropertyValue('--mobile-viewport-bottom-gap'))===844-(offsetTop+height),{height,offsetTop});
+   await p.locator('#activity-text').fill('10/21 0900-1000\n虛構中文活動\n虛構備註甲乙丙丁\n第二行虛構備註');
+   await p.locator('#activity-text').evaluate(field=>{field.setSelectionRange(field.value.length,field.value.length);field.focus();});await p.waitForTimeout(120);await keyboardGeometry('#activity-text',true);
+   // Synthetic composition events test focus retention, not native iOS IME rendering.
+   await p.locator('#activity-text').evaluate(field=>field.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true,data:'中'})));
+   await p.evaluate(()=>window.__viewportFixture.dispatchEvent(new Event('resize')));await p.waitForTimeout(80);assert.equal(await p.evaluate(()=>document.activeElement.id),'activity-text');
+   await p.locator('#activity-text').evaluate(field=>{field.dispatchEvent(new CompositionEvent('compositionupdate',{bubbles:true,data:'中文'}));field.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true,data:'中文'}));});
+   await p.locator('#preview-0-place').focus();await p.waitForTimeout(120);await keyboardGeometry('#preview-0-place');await noOverflow();
+   for(const selector of ['#activity-submit','#preview-0-next-day']){await p.locator(selector).focus();await p.waitForTimeout(80);assert.equal(await p.locator('html').getAttribute('data-editor-keyboard'),'open','keyboard layout must not jump when a button/checkbox gains focus');assert.equal(await p.locator('#activity-form>.planner-actions').evaluate(e=>getComputedStyle(e).position),'static');}
+
+  }await p.evaluate(()=>{Object.assign(window.__viewportFixture,{height:844,offsetTop:0});window.__viewportFixture.dispatchEvent(new Event('resize'));});await p.waitForTimeout(100);assert.equal(await p.locator('html').getAttribute('data-editor-keyboard'),null);assert.equal(await p.locator('#activity-form>.planner-actions').evaluate(e=>getComputedStyle(e).position),'sticky');await p.locator('#activity-text').fill('手機未完成草稿 0900-1000');}
+
   await p.evaluate(()=>{if(window.__viewportOriginalDescriptor)Object.defineProperty(window,'visualViewport',window.__viewportOriginalDescriptor);else delete window.visualViewport;delete window.__viewportOriginalDescriptor;delete window.__viewportFixture;dispatchEvent(new Event('resize'));});
   if(width<768){await p.setViewportSize({width,height:520});await p.waitForFunction(()=>parseInt(getComputedStyle(document.documentElement).getPropertyValue('--mobile-viewport-height'))===520);const rect=await p.locator('#activity-editor').boundingBox();assert.ok(rect&&rect.y>=0&&rect.y+rect.height<=521);await noOverflow();await p.setViewportSize({width,height:844});}
   await p.locator('[data-close-editor]').focus();await p.keyboard.press('Shift+Tab');assert.equal(await p.evaluate(()=>document.activeElement.id),'activity-submit');await p.locator('#activity-text').focus();for(let i=0;i<12;i++){await p.keyboard.press('Tab');assert.equal(await p.evaluate(()=>!!document.activeElement.closest('#activity-editor')),true);}await p.keyboard.press('Escape');assert.equal(await p.locator('#activity-editor').isVisible(),false);assert.equal(await p.evaluate(()=>document.activeElement.dataset.nav),'add');

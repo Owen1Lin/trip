@@ -1950,3 +1950,61 @@ body:has(#save-reminder:not([hidden])) .toast {
 .preview-fields>.form-field:has(input[data-field=date]) {
   grid-column:1/-1;
 }
+
+/* The title shares the close row; every extra header row costs space above a mobile keyboard. */
+.editor-dialog {
+  --editor-focus-top:76px;
+  --editor-focus-bottom:88px;
+  scroll-padding-block:var(--editor-focus-top) var(--editor-focus-bottom);
+}
+.editor-topbar {
+  justify-content:space-between;
+  gap:12px;
+  min-height:68px;
+  padding:10px 20px 8px;
+}
+.editor-heading { flex:1; min-width:0; }
+.editor-heading>h2 { margin:0 0 2px; font-size:21px; line-height:1.25; letter-spacing:-.4px; }
+.editor-heading>.editor-date { margin:0; font-size:12px; line-height:1.5; }
+.editor-topbar>[data-close-editor] {
+  flex:0 0 44px;
+  width:44px;
+  height:44px;
+  min-width:44px;
+  min-height:44px;
+}
+.editor-category {
+  display:flex;
+  flex-direction:row;
+  align-items:center;
+  gap:12px;
+  margin-bottom:14px;
+}
+.editor-category>label { margin:0; flex:0 0 auto; }
+.editor-category>select { width:auto; flex:1; min-width:0; min-height:44px; }
+#activity-text { scroll-margin-block:12px 24px; }
+html[data-editor-keyboard=open] .editor-dialog {
+  --editor-focus-top:64px;
+  --editor-focus-bottom:20px;
+  max-height:var(--mobile-viewport-height,100dvh);
+}
+html[data-editor-keyboard=open] .editor-topbar {
+  min-height:56px;
+  padding-block:5px;
+}
+html[data-editor-keyboard=open] .editor-heading>h2 { font-size:19px; }
+html[data-editor-keyboard=open] .activity-form { padding-top:0; }
+html[data-editor-keyboard=open] .editor-category { gap:10px; margin-bottom:8px; }
+html[data-editor-keyboard=open] #activity-text {
+  min-height:96px;
+  height:clamp(96px,28dvh,160px);
+}
+html[data-editor-keyboard=open] .activity-form>.planner-actions {
+  position:static;
+  padding-top:10px;
+  padding-bottom:calc(10px + env(safe-area-inset-bottom));
+  backdrop-filter:none;
+}
+@media(min-width:480px) {
+  .editor-topbar { padding-inline:28px; }
+}
