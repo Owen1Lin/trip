@@ -1,6 +1,8 @@
 // Deterministic parsing and browser batch acceptance; all identity/cloud requests are mocked.
 const {parse,parseBatch}=require('../quick-entry.js');
 const{browser,assert,URL_BASE,googleUser,mockBackend,login,ensureLocked,navigate,openEditor,closeEditor,openDetails,editActivity,addActivity}=require('./helpers.cjs');
+const dottedYear=parseBatch('2026.10.22 08-10 出門');assert.deepEqual(dottedYear.errors,[]);assert.equal(dottedYear.entries.length,1);assert.deepEqual([dottedYear.entries[0].date,dottedYear.entries[0].startTime,dottedYear.entries[0].endTime,dottedYear.entries[0].place],['2026-10-22','08:00','10:00','出門']);assert.deepEqual(dottedYear.entries[0].errors,[]);
+const partialDottedYear=parseBatch('2026.10 出門');assert.ok(partialDottedYear.errors.length||partialDottedYear.entries.some(entry=>entry.errors.length));
 const exact=parse('十機食堂10/25 0600',{date:'2026-10-21'});assert.deepEqual(exact.errors,[]);assert.equal(exact.place,'十機食堂');assert.equal(exact.date,'2026-10-25');assert.equal(exact.startTime,'06:00');assert.equal(exact.endTime,'');assert.ok(exact.pending.length);
 const compactRange=parse('手機未完成草稿 0900-1000',{date:'2026-10-21'});assert.deepEqual(compactRange.errors,[]);assert.equal(compactRange.startTime,'09:00');assert.equal(compactRange.endTime,'10:00');assert.ok(parse('餐廳 2026-10',{date:'2026-10-21'}).errors.length);
 assert.ok(parse('食堂 晚上十二點',{date:'2026-10-21'}).errors.length);

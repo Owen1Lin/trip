@@ -3,7 +3,7 @@
   'use strict';
   const DATES = ['2026-10-21', '2026-10-22', '2026-10-23', '2026-10-24', '2026-10-25'];
   const digits = { 零:0, 〇:0, 一:1, 二:2, 兩:2, 三:3, 四:4, 五:5, 六:6, 七:7, 八:8, 九:9 };
-  const datePattern = () => /(?<!\d)(?:(\d{4})[-/](\d{1,2})[-/](\d{1,2})|(\d{1,2})[/.](\d{1,2})|(?:(\d{4})年)?(\d{1,2})月(\d{1,2})日?)(?!\d)/g;
+  const datePattern = () => /(?<!\d)(?:(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})|(\d{1,2})[/.](\d{1,2})|(?:(\d{4})年)?(\d{1,2})月(\d{1,2})日?)(?!\d)/g;
   const numeral = '[零〇一二兩三四五六七八九十\\d]{1,3}';
   const timePattern = () => new RegExp(`(?:(上午|早上|下午|晚上|中午|凌晨)\\s*)?(?:(?<![\\d:])(\\d{1,2}):(\\d{2})(?!\\d|:)|(${numeral})[點時](?:(半)|(${numeral})分?)?(?=$|[\\s,，;；\\-~～–—]|到|至)|(?<![\\p{L}\\d])(\\d{4})(?![\\p{L}\\d]))`, 'gu');
   function number(value) {
@@ -37,7 +37,7 @@
       date = DATES.includes(explicit) ? explicit : '';
       if (!date) errors.push('日期須在 2026/10/21 至 10/25，請修改輸入。');
       source = source.replace(dates, ' ');
-    } else if (/(?:\d{1,4}\s*[/年]\s*\d|\d+月|\d{4}-\d{1,2}(?!\d))/.test(source)) {
+    } else if (/(?:\d{1,4}\s*[/年]\s*\d|\d+月|\d{4}[-.]\d{1,2}(?!\d))/.test(source)) {
       errors.push('日期格式不完整，請用 10/25 或 2026-10-25。');
     }
     source = normalizeSchedule(source);
