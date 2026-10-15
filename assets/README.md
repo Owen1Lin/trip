@@ -1,5 +1,7 @@
 # 圖片來源
 
+`1015.jpeg` 為使用者提供的主畫面圖示原圖；`apple-touch-icon-v1.png`（180×180）與 `favicon-v1.png`（32×32）由原圖等比例縮小並轉為 PNG，保留完整構圖。
+
 照片下載自 Unsplash 的公開圖片服務，依 Unsplash License 使用於網站旅行氛圍示意，不代表特定景點的實際照片。
 
 授權說明：https://unsplash.com/license
