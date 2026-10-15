@@ -65,7 +65,7 @@
   $('#link-draft-form').addEventListener('submit',event=>{
     event.preventDefault();if(pending||$('#private-app').hidden||$('#link-draft-form').hidden)return;
     try {
-      window.TripPlanner.addImportedDraft({sourceUrl,date:$('#draft-date').value,period:$('#draft-period').value,startTime:$('#draft-start').value,endTime:$('#draft-end').value,place:$('#draft-place').value.trim(),category:$('#draft-category').value,shopping:$('#draft-shopping').value,notes:$('#draft-notes').value,confirmed:$('#draft-confirm').checked});
+      window.TripPlanner.addImportedDraft({sourceUrl,date:$('#draft-date').value,period:$('#draft-period').value,startTime:$('#draft-start').value,endTime:$('#draft-end').value,place:$('#draft-place').value.trim(),category:$('#draft-category').value,notes:$('#draft-notes').value,confirmed:$('#draft-confirm').checked});
       clear();status('草稿已加入行程；請按儲存，讓另一位載入。');
     }catch(error){status(error.message);}
   });

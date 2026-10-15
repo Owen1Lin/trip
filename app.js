@@ -21,6 +21,9 @@ function toast(message) { const element = $('#toast'); element.textContent = mes
 function node(tag, className, text) { const element = document.createElement(tag); if (className) element.className = className; if (text !== undefined) element.textContent = text; return element; }
 function text(value, max, optional = false) { return typeof value === 'string' && value.length <= max && (optional || value.trim().length > 0); }
 function time(value) { return typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value); }
+function mergeNotes(shopping,notes) {
+  return shopping !== '' ? `購物清單：\n${shopping}\n\n備註：\n${notes}` : notes;
+}
 function validateTrips(trips) {
   const fail = () => { throw new Error('資料格式不正確：僅接受這份福岡＆九州五日手帳的有效備份。'); };
   if (!Array.isArray(trips) || trips.length !== 1) fail();
@@ -30,11 +33,13 @@ function validateTrips(trips) {
   const days = input.days.map(day => {
     if (!Array.isArray(day) || day.length > 100) fail();
     return day.map(activity => {
-      if (!activity || typeof activity.id !== 'string' || !/^[a-zA-Z0-9_-]{1,80}$/.test(activity.id) || ids.has(activity.id) || !(activity.startTime === '' || time(activity.startTime)) || !(activity.endTime === '' || time(activity.endTime)) || (activity.endTime !== '' && (!activity.startTime || activity.endTime <= activity.startTime)) || !['morning','afternoon','pending','noon','evening'].includes(activity.period) || !CATEGORIES.includes(activity.category) || !text(activity.place, 150) || !text(activity.shopping, 2000, true) || !text(activity.notes, 2000, true) || typeof activity.completed !== 'boolean' || !Array.isArray(activity.fields) || activity.fields.length > 20) fail();
+      if (!activity || typeof activity.id !== 'string' || !/^[a-zA-Z0-9_-]{1,80}$/.test(activity.id) || ids.has(activity.id) || !(activity.startTime === '' || time(activity.startTime)) || !(activity.endTime === '' || time(activity.endTime)) || (activity.endTime !== '' && (!activity.startTime || activity.endTime <= activity.startTime)) || !['morning','afternoon','pending','noon','evening'].includes(activity.period) || !CATEGORIES.includes(activity.category) || !text(activity.place, 150) || !text(activity.shopping, 2000, true) || !text(activity.notes, 5000, true) || typeof activity.completed !== 'boolean' || !Array.isArray(activity.fields) || activity.fields.length > 20) fail();
       if (!Object.hasOwn(ACTOR_NAMES, attribution(activity.createdBy)) || !Object.hasOwn(ACTOR_NAMES, attribution(activity.updatedBy))) fail();
+      const notes=mergeNotes(activity.shopping,activity.notes);
+      if (!text(notes,5000,true)) fail();
       ids.add(activity.id);
       const fields = activity.fields.map(field => { if (!field || !text(field.label, 60) || !text(field.value, 1000, true)) fail(); return { label: field.label.trim(), value: field.value }; });
-      return { id: activity.id, startTime: activity.startTime, endTime: activity.endTime, period: periodFor(activity.startTime), category: activity.category, place: activity.place.trim(), shopping: activity.shopping, notes: activity.notes, completed: activity.completed, fields, createdBy: attribution(activity.createdBy), updatedBy: attribution(activity.updatedBy) };
+      return { id: activity.id, startTime: activity.startTime, endTime: activity.endTime, period: periodFor(activity.startTime), category: activity.category, place: activity.place.trim(), shopping: '', notes, completed: activity.completed, fields, createdBy: attribution(activity.createdBy), updatedBy: attribution(activity.updatedBy) };
     });
   });
   return [{ ...emptyTrip(), days }];
@@ -64,19 +69,27 @@ function resetEditor() {
   $('#activity-start').value = ''; $('#activity-end').value = '';
   if ($('#activity-date')) $('#activity-date').value=DATES[activeDay];
   updateEditorDate();
-  if ($('#quick-preview')) $('#quick-preview').textContent='';
+  if ($('#quick-preview')) { $('#quick-preview').textContent=''; delete $('#quick-preview').dataset.state; }
   setEditorMode(false);
   $('#activity-form-title').textContent = '新增活動'; $('#activity-submit').textContent = '新增'; $('#activity-cancel').hidden = true;
+}
+function readQuickBatch() {
+  if (!window.TripQuickEntry?.parseBatch) throw new Error('批次文字解析尚未準備完成，請重新整理頁面。');
+  return window.TripQuickEntry.parseBatch($('#activity-text').value,{date:DATES[activeDay]});
+}
+function batchErrors(batch) {
+  return [...batch.errors,...batch.entries.flatMap((entry,index)=>entry.errors.map(error=>`第 ${index+1} 筆：${error}`))];
 }
 function previewQuickEntry() {
   if (!authorized() || !$('#quick-preview')) return;
   const input=$('#activity-text')?.value || '';
-  if (!input.trim()) { $('#quick-preview').textContent='未寫日期採目前選取日期；時間可稍後補充。'; return; }
+  if (!input.trim()) { $('#quick-preview').textContent='可貼入多筆活動；未寫日期沿用前一筆日期，首筆採目前選取日期；時間可稍後補充。'; delete $('#quick-preview').dataset.state; return; }
   try {
-    if (!window.TripQuickEntry?.parse) throw new Error('文字解析尚未準備完成，請重新整理頁面。');
-    const parsed=window.TripQuickEntry.parse(input,{date:DATES[activeDay]});
-    $('#quick-preview').textContent=parsed.errors.length ? parsed.errors.join('；') : [parsed.place,parsed.date,parsed.startTime,parsed.endTime ? `至 ${parsed.endTime}` : '',...new Set(parsed.pending)].filter(Boolean).join(' · ');
-  } catch(error) { $('#quick-preview').textContent=error.message; }
+    const batch=readQuickBatch(),errors=batchErrors(batch);
+    $('#quick-preview').dataset.state=errors.length ? 'error' : 'ready';
+    const lines=batch.entries.map((entry,index)=>`第 ${index+1} 筆：${[entry.place,entry.date,entry.startTime,entry.endTime ? `至 ${entry.endTime}` : '',...new Set(entry.pending)].filter(Boolean).join(' · ')}`);
+    $('#quick-preview').textContent=[errors.length ? '請修正後再新增；整批尚未加入。' : `將新增 ${batch.entries.length} 筆活動`,...lines,...errors].join('\n');
+  } catch(error) { $('#quick-preview').textContent=error.message; $('#quick-preview').dataset.state='error'; }
 }
 function closeEditor() { window.TripMobileUI?.closeEditor(); window.TripMobileUI?.showView('itinerary'); }
 function startActivity() {
@@ -98,7 +111,7 @@ function edit(activity) {
   editingId = activity.id; setEditorMode(true);
   if ($('#activity-date')) $('#activity-date').value=DATES[activeDay];
   updateEditorDate();
-  for (const [id, value] of Object.entries({ start: activity.startTime, end: activity.endTime, period: periodFor(activity.startTime), category: activity.category, place: activity.place, shopping: activity.shopping, notes: activity.notes })) $(`#activity-${id}`).value = value;
+  for (const [id, value] of Object.entries({ start: activity.startTime, end: activity.endTime, period: periodFor(activity.startTime), category: activity.category, place: activity.place, notes:activity.notes })) $(`#activity-${id}`).value = value;
   $('#custom-fields').replaceChildren(); activity.fields.forEach(field => addField(field.label, field.value));
   $('#activity-form-title').textContent = '編輯活動'; $('#activity-submit').textContent = '完成編輯'; $('#activity-cancel').hidden = false;
   window.TripMobileUI?.openEditor({editing:true}); $('#activity-place').focus();
@@ -136,8 +149,7 @@ function render() {
       const content=node('div','activity-content');
       content.append(node('h4','',activity.place));
       content.append(node('span',`actor-badge actor-${activity.updatedBy}`,`${ACTOR_NAMES[activity.updatedBy]}更新`));
-      if (activity.shopping) content.append(node('h5','','購物清單'),node('p','activity-shopping',activity.shopping));
-      if (activity.notes) content.append(node('h5','','注意事項'),node('p','activity-notes',activity.notes));
+      if (activity.notes) content.append(node('h5','','備註'),node('p','activity-notes',activity.notes));
       activity.fields.forEach(field=>content.append(node('h5','',field.label),node('p','',field.value)));
       const completedLabel=node('label','completed-toggle'),completed=node('input'); completed.type='checkbox'; completed.checked=activity.completed;completed.setAttribute('aria-label',`標記完成：${activity.place}`);
       completed.addEventListener('change',()=>{if(!allowed())return;activity.completed=completed.checked;activity.updatedBy=currentActor();changed();});completedLabel.append(completed,document.createTextNode('已完成'));content.append(completedLabel);
@@ -171,27 +183,38 @@ $('#activity-form').addEventListener('submit', event => {
   const sourceDay=editingId ? trip.days.findIndex(day=>day.some(activity=>activity.id===editingId)) : -1;
   const old=sourceDay>=0 ? trip.days[sourceDay].find(activity=>activity.id===editingId) : null;
   if(editingId&&!old){toast('這個活動已不存在，請確認目前行程。');return;}
-  let targetDay=activeDay,activity;
-  if(old) {
-    targetDay=DATES.indexOf($('#activity-date') ? $('#activity-date').value : DATES[activeDay]);
-    activity={...old,startTime:$('#activity-start').value,endTime:$('#activity-end').value,period:periodFor($('#activity-start').value),category:$('#activity-category').value,place:$('#activity-place').value.trim(),shopping:$('#activity-shopping').value,notes:$('#activity-notes').value,updatedBy:currentActor(),fields:[...$('#custom-fields').children].map(row=>({label:row.children[0].value.trim(),value:row.children[1].value}))};
-  } else {
+  if(!old) {
     try {
-      if(!window.TripQuickEntry?.parse)throw new Error('文字解析尚未準備完成，請重新整理頁面。');
-      const parsed=window.TripQuickEntry.parse($('#activity-text').value,{date:DATES[activeDay]});
-      if(parsed.errors.length)throw new Error(parsed.errors.join('；'));
-      targetDay=DATES.indexOf(parsed.date);
-      activity={id:newId(),startTime:parsed.startTime || '',endTime:parsed.endTime || '',period:periodFor(parsed.startTime || ''),category:$('#activity-category').value,place:parsed.place,shopping:'',notes:'',completed:false,createdBy:currentActor(),updatedBy:currentActor(),fields:[]};
-    } catch(error){toast(error.message);previewQuickEntry();return;}
+      const batch=readQuickBatch(),errors=batchErrors(batch);
+      if(errors.length)throw new Error(errors.join('；'));
+      if(!batch.entries.length)throw new Error('請至少輸入一筆活動。');
+      const candidate=structuredClone(trip),actor=currentActor();
+      for(const [index,entry] of batch.entries.entries()) {
+        const day=DATES.indexOf(entry.date);
+        if(day<0)throw new Error(`第 ${index+1} 筆：日期不在這次旅行範圍。`);
+        if(candidate.days[day].length>=100)throw new Error(`第 ${index+1} 筆：${entry.date} 最多 100 個活動；整批尚未加入。`);
+        candidate.days[day].push({id:newId(),startTime:entry.startTime || '',endTime:entry.endTime || '',period:periodFor(entry.startTime || ''),category:$('#activity-category').value,place:entry.place,shopping:'',notes:'',completed:false,createdBy:actor,updatedBy:actor,fields:[]});
+      }
+      const validated=validateTrips([candidate])[0];
+      trip=validated;activeDay=DATES.indexOf(batch.entries[0].date);resetEditor();changed();closeEditor();toast(`已新增 ${batch.entries.length} 筆活動。`);
+    } catch(error){
+      toast(error.message);previewQuickEntry();
+      if ($('#quick-preview')) {
+        $('#quick-preview').dataset.state='error';
+        $('#quick-preview').textContent=$('#quick-preview').textContent.replace(/^將新增 \d+ 筆活動/,'請修正後再新增；整批尚未加入。');
+        if (!$('#quick-preview').textContent.includes(error.message)) $('#quick-preview').textContent+=`\n${error.message}`;
+      }
+    }
+    return;
   }
+  const targetDay=DATES.indexOf($('#activity-date') ? $('#activity-date').value : DATES[activeDay]);
   if(targetDay<0){toast('請選擇這次旅行的日期。');return;}
-  if((!old||sourceDay!==targetDay)&&trip.days[targetDay].length>=100){toast('每天最多 100 個活動。');return;}
+  if(sourceDay!==targetDay&&trip.days[targetDay].length>=100){toast('每天最多 100 個活動。');return;}
+  const activity={...old,startTime:$('#activity-start').value,endTime:$('#activity-end').value,period:periodFor($('#activity-start').value),category:$('#activity-category').value,place:$('#activity-place').value.trim(),shopping:'',notes:$('#activity-notes').value,updatedBy:currentActor(),fields:[...$('#custom-fields').children].map(row=>({label:row.children[0].value.trim(),value:row.children[1].value}))};
   if(!(activity.startTime===''||time(activity.startTime))||!(activity.endTime===''||time(activity.endTime))||(activity.endTime!==''&&(!activity.startTime||activity.endTime<=activity.startTime))){toast('結束時間必須晚於開始時間；可留空待確認，跨日請分兩天填寫。');return;}
-  const candidate=structuredClone(trip);
-  if(old)candidate.days[sourceDay]=candidate.days[sourceDay].filter(item=>item.id!==editingId);
-  candidate.days[targetDay].push(activity);
+  const candidate=structuredClone(trip);candidate.days[sourceDay]=candidate.days[sourceDay].filter(item=>item.id!==editingId);candidate.days[targetDay].push(activity);
   try{trip=validateTrips([candidate])[0];}catch(error){toast(error.message);return;}
-  const edited=Boolean(editingId);activeDay=targetDay;resetEditor();changed();closeEditor();toast(edited?'活動已更新。':'活動已加入。');
+  activeDay=targetDay;resetEditor();changed();closeEditor();toast('活動已更新。');
 });
 $('#activity-text')?.addEventListener('input',previewQuickEntry);
 $('#activity-date')?.addEventListener('change',updateEditorDate);

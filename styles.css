@@ -1329,7 +1329,7 @@ body.mobile-editor-open {
   overflow-wrap:anywhere;
 }
 #activity-text {
-  min-height:116px;
+  min-height:138px;
 }
 .save-reminder {
   position:fixed;
@@ -1783,4 +1783,31 @@ body:has(#auth-restoring:not([hidden])) #auth-screen {
 /* A confirmation toast must not obscure the unsaved-change reminder. */
 body:has(#save-reminder:not([hidden])) .toast {
   bottom:calc(var(--nav-height) + env(safe-area-inset-bottom) + 94px);
+}
+
+/* Batch previews remain readable and scroll within the sheet above its action bar. */
+.quick-preview {
+  max-height:240px;
+  max-height:min(240px, 32dvh);
+  overflow:auto;
+  overscroll-behavior:contain;
+  scrollbar-width:thin;
+  scroll-padding-block:10px;
+}
+.quick-preview ol,.quick-preview ul {
+  margin:0;
+  padding-left:20px;
+}
+.quick-preview li+li {
+  margin-top:8px;
+}
+.quick-preview[data-state=error] {
+  color:#924735;
+  border-color:#e2b9aa;
+  background:#fff2ec;
+}
+
+.quick-preview:focus-visible {
+  outline:3px solid #b67829;
+  outline-offset:3px;
 }

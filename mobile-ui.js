@@ -95,8 +95,12 @@
     document.body.classList.add('mobile-editor-open');
     document.documentElement.dataset.mobileEditor = 'open';
     updateNavigation();
-    const focusTarget = [...editor.querySelectorAll('#activity-text, #activity-place, input, select, textarea')]
-      .find(control => !control.disabled && !control.closest('[hidden], [inert]') && control.getClientRects().length);
+    const editing = !editor.querySelector('#activity-detail-fields')?.hidden;
+    const focusOrder = editing
+      ? ['#activity-place', '#activity-date', '#activity-category']
+      : ['#activity-category', '#activity-text'];
+    const focusTarget = focusOrder.map(selector => editor.querySelector(selector))
+      .find(control => control && !control.disabled && !control.closest('[hidden], [inert]') && control.getClientRects().length);
     focusTarget?.focus({ preventScroll: true });
     return true;
   }
