@@ -35,7 +35,7 @@ python3 -m http.server 3000 --bind 0.0.0.0
 
 ## 審查與驗收
 
-三位 AI 協作角色與流程見 [TEAM.md](TEAM.md)。測試環境需提供 Node.js 24、Playwright 及 Chromium，啟動上述靜態服務後執行：
+四位 AI 協作角色為康康（網頁工程）、小思（UI／UX）、去去（APP 與跨裝置開發）、阿福（獨立驗收），分工與流程見 [TEAM.md](TEAM.md)。測試環境需提供 Node.js 24、Playwright 及 Chromium，啟動上述靜態服務後執行：
 
 ```sh
 node tests/planner.test.cjs
