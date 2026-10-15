@@ -44,7 +44,14 @@ function persist() {
 }
 function resetEditor() {
   editingId = null; $('#activity-form').reset(); $('#custom-fields').replaceChildren();
+  $('#activity-start').value = ''; $('#activity-end').value = '';
   $('#activity-form-title').textContent = '新增活動'; $('#activity-submit').textContent = '＋ 加入當天'; $('#activity-cancel').hidden = true;
+}
+function closeEditor() { window.TripMobileUI?.closeEditor(); window.TripMobileUI?.showView('itinerary'); }
+function startActivity(period) {
+  requireAuth(); resetEditor();
+  if (Object.hasOwn(PERIODS, period)) $('#activity-period').value=period;
+  window.TripMobileUI?.openEditor({editing:false,period});
 }
 function addField(label = '', value = '') {
   if (!authorized()) return;
@@ -60,23 +67,30 @@ function edit(activity) {
   editingId = activity.id;
   for (const [id, value] of Object.entries({ start: activity.startTime, end: activity.endTime, period: activity.period, category: activity.category, place: activity.place, shopping: activity.shopping, notes: activity.notes })) $(`#activity-${id}`).value = value;
   $('#custom-fields').replaceChildren(); activity.fields.forEach(field => addField(field.label, field.value));
-  $('#activity-form-title').textContent = '編輯活動'; $('#activity-submit').textContent = '儲存修改'; $('#activity-cancel').hidden = false; $('#activity-place').focus();
+  $('#activity-form-title').textContent = '編輯活動'; $('#activity-submit').textContent = '儲存修改'; $('#activity-cancel').hidden = false;
+  window.TripMobileUI?.openEditor({editing:true}); $('#activity-place').focus();
 }
 function changed() { persist(); render(); }
 function render() {
   if (!authorized()) return;
   const generation = sessionGeneration;
   const allowed = () => authorized() && generation === sessionGeneration;
+  const weekdays = ['三', '四', '五', '六', '日'];
   $('#day-tabs').replaceChildren();
   for (let index = 0; index < 5; index++) {
-    const button = node('button', 'day-tab', `10 / ${21 + index} · 第 ${index + 1} 天`); button.type = 'button'; button.setAttribute('aria-pressed', String(index === activeDay));
+    const button = node('button', 'day-tab'); button.type = 'button'; button.setAttribute('aria-pressed', String(index === activeDay)); button.setAttribute('aria-label',`10 / ${21 + index} · 第 ${index + 1} 天`);
+    button.append(node('span','day-tab-weekday',`週${weekdays[index]}`),node('span','day-tab-number',String(21+index)),node('span','day-tab-count',`${trip.days[index].length} 個活動`));
     button.addEventListener('click', () => { if (!allowed()) return; activeDay = index; resetEditor(); render(); $('#day-tabs').children[index].focus(); }); $('#day-tabs').append(button);
   }
-  const weekdays = ['三', '四', '五', '六', '日']; $('#day-summary').textContent = `10 月 ${21 + activeDay} 日 · 星期${weekdays[activeDay]}`;
+  $('#day-summary').textContent = `10 月 ${21 + activeDay} 日 · 星期${weekdays[activeDay]}`;
+  const activityCount=trip.days[activeDay].length, completedCount=trip.days[activeDay].filter(activity=>activity.completed).length;
+  if ($('#day-progress')) $('#day-progress').textContent=`${activityCount} 個活動 · 已完成 ${completedCount} 個`;
+  if ($('#editor-date')) $('#editor-date').textContent=`10 月 ${21+activeDay} 日 · 星期${weekdays[activeDay]}`;
   const list = $('#activity-list'); list.replaceChildren();
   Object.entries(PERIODS).forEach(([period, title]) => {
     const section = node('section', 'period-section'); section.dataset.period = period;
-    const heading = node('h3', 'period-heading', title); section.append(heading);
+    const header=node('div','period-header'); const heading = node('h3', 'period-heading', title);
+    const add=node('button','period-add','＋ 新增'); add.type='button';add.setAttribute('aria-label',`新增${title}活動`);add.addEventListener('click',()=>{if(allowed())startActivity(period);});header.append(heading,add);section.append(header);
     const activities = node('div', 'period-list');
     const sorted = trip.days[activeDay].filter(activity => activity.period === period).sort((a,b) => a.startTime.localeCompare(b.startTime));
     if (!sorted.length) activities.append(node('p', 'empty-state', '留點空白，等我們一起填上。'));
@@ -85,9 +99,10 @@ function render() {
       const timing = node('div', 'activity-time', `${activity.startTime} — ${activity.endTime}`);
       const content = node('div', 'activity-content'); content.append(node('span', 'category-badge', activity.category), node('h4', '', activity.place));
       const actorMeta = node('div', 'actor-meta'); actorMeta.append(node('span', `actor-badge actor-${activity.createdBy}`, `${ACTOR_NAMES[activity.createdBy]}建立`), node('span', `actor-badge actor-${activity.updatedBy}`, `${ACTOR_NAMES[activity.updatedBy]}更新`)); content.append(actorMeta);
-      if (activity.shopping) { content.append(node('h5', '', '購物清單'), node('p', 'activity-shopping', activity.shopping)); }
-      if (activity.notes) { content.append(node('h5', '', '注意事項'), node('p', 'activity-notes', activity.notes)); }
-      activity.fields.forEach(field => { content.append(node('h5', '', field.label), node('p', '', field.value)); });
+      const details=node('details','activity-details'); details.append(node('summary','','查看備註與調整安排'));
+      if (activity.shopping) { details.append(node('h5', '', '購物清單'), node('p', 'activity-shopping', activity.shopping)); }
+      if (activity.notes) { details.append(node('h5', '', '注意事項'), node('p', 'activity-notes', activity.notes)); }
+      activity.fields.forEach(field => { details.append(node('h5', '', field.label), node('p', '', field.value)); });
       const completedLabel = node('label', 'completed-toggle'); const completed = node('input'); completed.type = 'checkbox'; completed.checked = activity.completed; completed.setAttribute('aria-label', `標記完成：${activity.place}`);
       completed.addEventListener('change', () => { if (!allowed()) return; activity.completed = completed.checked; activity.updatedBy = currentActor(); changed(); }); completedLabel.append(completed, document.createTextNode('已完成')); content.append(completedLabel);
       const actions = node('div', 'activity-actions');
@@ -108,9 +123,10 @@ function render() {
           trip.days[target].push(next); if(editingId===activity.id) resetEditor(); changed(); toast(copying?'已複製活動。':'已移動活動。');
         }); transfer.append(button);
       }
-      transfer.prepend(daySelect,periodSelect); content.append(transfer); card.append(timing,content,actions); activities.append(card);
+      transfer.prepend(daySelect,periodSelect); details.append(transfer); content.append(details); card.append(timing,content,actions); activities.append(card);
     }); section.append(activities); list.append(section);
   });
+  window.dispatchEvent(new CustomEvent('trip-planner-rendered',{detail:{activeDay,date:`2026-10-${21+activeDay}`,activityCount,completedCount,dayCounts:trip.days.map(day=>day.length)}}));
 }
 $('#activity-form').addEventListener('submit', event => {
   event.preventDefault(); if (!authorized()) return;
@@ -122,9 +138,9 @@ $('#activity-form').addEventListener('submit', event => {
   const candidate = structuredClone(trip); const index = candidate.days[activeDay].findIndex(item=>item.id===editingId);
   if (editingId) candidate.days[activeDay][index]=activity; else candidate.days[activeDay].push(activity);
   try { trip = validateTrips([candidate])[0]; } catch(error) { toast(error.message); return; }
-  const edited=Boolean(editingId); resetEditor(); changed(); toast(edited?'活動已更新。':'活動已加入。');
+  const edited=Boolean(editingId); resetEditor(); changed(); closeEditor(); toast(edited?'活動已更新。':'活動已加入。');
 });
-$('#activity-cancel').addEventListener('click', () => { if (authorized()) resetEditor(); });
+$('#activity-cancel').addEventListener('click', () => { if (authorized()) { resetEditor(); closeEditor(); } });
 $('#add-custom-field').addEventListener('click', () => addField());
 $('#export-trips').addEventListener('click', () => {
   if (!authorized()) return;
@@ -157,6 +173,7 @@ function lock() {
   sessionGeneration++; session=null; trip=null; activeDay=0;
   window.dispatchEvent(new CustomEvent('trip-planner-locked'));
   resetEditor(); $('#day-tabs').replaceChildren(); $('#activity-list').replaceChildren(); $('#day-summary').textContent=''; $('#storage-status').textContent=''; $('#sync-status').textContent=''; $('#account-email').textContent=''; $('#account-email').className='account-email'; $('#import-file').value=''; $('#toast').textContent=''; $('#toast').classList.remove('visible'); clearTimeout(toast.timer);
+  if ($('#day-progress')) $('#day-progress').textContent=''; if ($('#editor-date')) $('#editor-date').textContent='';
   $('#private-app').hidden=true; $('#private-app').inert=true; $('#auth-screen').hidden=false;
 }
 async function unlock() {
@@ -191,7 +208,8 @@ function addImportedDraft(draft) {
   const activity = { id:newId(), startTime:draft.startTime,endTime:draft.endTime,period:draft.period,category:draft.category,place:draft.place,shopping:draft.shopping || '',notes:draft.notes || '',completed:false,createdBy:currentActor(),updatedBy:currentActor(),fields:[{label:'匯入來源',value:source.href}] };
   const candidate=structuredClone(trip); candidate.days[day].push(activity);
   trip=validateTrips([candidate])[0]; activeDay=day; resetEditor(); changed();
+  window.dispatchEvent(new CustomEvent('trip:activity-added'));
 }
-window.TripPlanner=Object.freeze({ unlock,lock,addImportedDraft,getTrips:()=>{requireAuth();return structuredClone([trip]);},validateTrips,replaceTrips:trips=>{requireAuth();const validated=validateTrips(trips);trip=validated[0];activeDay=0;resetEditor();changed();} });
+window.TripPlanner=Object.freeze({ unlock,lock,startActivity,addImportedDraft,getTrips:()=>{requireAuth();return structuredClone([trip]);},validateTrips,replaceTrips:trips=>{requireAuth();const validated=validateTrips(trips);trip=validated[0];activeDay=0;resetEditor();changed();} });
 lock();
 })();

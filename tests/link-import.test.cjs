@@ -1,5 +1,5 @@
 // Mock public-source/model acceptance; live social platforms and model services require integration validation.
-const {browser,assert,URL_BASE,mockBackend,login,ensureLocked}=require('./helpers.cjs');
+const {browser,assert,URL_BASE,mockBackend,login,ensureLocked,navigate,openEditor,closeEditor,openDetails,signOut}=require('./helpers.cjs');
 const SOURCES={maps:'https://www.google.com/maps/place/Hakata',threads:'https://www.threads.net/@traveller/post/ABC123',instagram:'https://www.instagram.com/p/ABC123/'};
 const EXACT_MAPS_LINK='https://maps.app.goo.gl/WATLthGABRLNZ3fb9';
 const MAPS_LITERAL_URL='https://www.google.com/maps/place/'+encodeURIComponent('燒肉垂榕')+'/';
@@ -79,13 +79,13 @@ function result(url,model='metadata') {
   const data=r.request().postDataJSON();requests.push(data);if(hit)hit();if(delay)await delay;
   try{await r.fulfill({status,contentType:'application/json',body:JSON.stringify(reply || result(data.url,data.model))});}catch{}
  });
- const fetchDraft=async(url,model='metadata')=>{await p.locator('#link-url').fill(url);await p.locator('#link-model').selectOption(model);await p.locator('#link-fetch').click();await p.locator('#link-draft-form').waitFor({state:'visible'});};
+ const fetchDraft=async(url,model='metadata')=>{await navigate(p,'link-import');await p.locator('#link-url').fill(url);await p.locator('#link-model').selectOption(model);await p.locator('#link-fetch').click();await p.locator('#link-draft-form').waitFor({state:'visible'});};
  const trips=()=>p.evaluate(()=>window.TripPlanner.getTrips());
  const schedule=async(date='2026-10-22',period='noon',start='13:00',end='14:00')=>{await p.locator('#draft-date').selectOption(date);await p.locator('#draft-period').selectOption(period);await p.locator('#draft-start').fill(start);await p.locator('#draft-end').fill(end);};
  const submitBypass=()=>p.locator('#link-draft-form').evaluate(e=>e.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
  try{
   await p.goto(URL_BASE);await ensureLocked(p);assert.ok(await p.locator('#link-import-form').evaluate(e=>e.closest('#private-app')!==null));
-  await login(p);
+  await login(p);await navigate(p,'link-import');
   for(const url of [SOURCES.maps,SOURCES.threads,SOURCES.instagram,'https://maps.app.goo.gl/Abc123'])assert.ok(await p.evaluate(url=>{try{window.TripLinkImport.validateUrl(url);return true;}catch{return false;}},url),url);
   for(const url of ['http://www.instagram.com/p/ABC/','https://instagram.com.evil.example/p/ABC/','https://user:pass@www.instagram.com/p/ABC/','https://127.0.0.1/maps','https://www.google.com/search?q=trip','javascript:alert(1)','https://www.instagram.com:8443/p/ABC/'])assert.equal(await p.evaluate(url=>{try{window.TripLinkImport.validateUrl(url);return true;}catch{return false;}},url),false,url);
   const initial=JSON.stringify(await trips());
@@ -108,9 +108,9 @@ function result(url,model='metadata') {
   }
   await p.locator('#draft-confirm').check();await p.locator('#draft-end').fill('12:00');await submitBypass();assert.equal(JSON.stringify(await trips()),initial,'reversed time rejected');
   await p.locator('#draft-end').fill('14:00');assert.equal(await p.locator('#draft-confirm').isChecked(),false);await p.locator('#draft-confirm').check();await p.locator('#draft-add').click();const added=(await trips())[0].days[1][0];assert.equal(added.place,'手動核對的博多活動');assert.equal(added.period,'noon');assert.equal(added.startTime,'13:00');assert.equal(added.endTime,'14:00');assert.equal(added.shopping,'伴手禮');assert.equal(added.createdBy,'owen');assert.equal(added.fields.find(f=>f.label==='匯入來源').value,SOURCES.threads);assert.equal(await p.evaluate(()=>window.__linkXss),undefined);
-  const after=JSON.stringify(await trips());
+  const after=JSON.stringify(await trips());await navigate(p,'link-import');
   status=503;await p.locator('#link-url').fill(SOURCES.instagram);await p.locator('#link-fetch').click();await p.waitForFunction(()=>!document.querySelector('#link-fetch').disabled);assert.match(await p.locator('#link-import-status').innerText(),/手動|無法|失敗/);assert.equal(JSON.stringify(await trips()),after);assert.equal(await p.locator('#draft-evidence').inputValue(),'');assert.equal(await p.locator('#draft-place').inputValue(),'');await p.locator('#draft-place').fill('手動填寫的備用活動');await schedule('2026-10-23','evening','18:00','19:00');await p.locator('#draft-confirm').check();await p.locator('#draft-add').click();assert.equal((await trips())[0].days[2][0].place,'手動填寫的備用活動');status=200;
-  const preserved=JSON.stringify(await trips());
+  const preserved=JSON.stringify(await trips());await navigate(p,'link-import');
   for(const [code,message,expected] of [[404,'Function not found',/未部署|尚未.*部署/],[422,'Source unavailable',/公開|平台|來源/]]){
    status=code;reply={error:message};await p.locator('#link-url').fill(SOURCES.instagram);await p.locator('#link-fetch').click();await p.waitForFunction(()=>!document.querySelector('#link-fetch').disabled);assert.match(await p.locator('#link-import-status').innerText(),expected);assert.match(await p.locator('#link-import-status').innerText(),/手動/);assert.ok(await p.locator('#link-draft-form').isVisible());assert.equal(await p.locator('#draft-place').inputValue(),'');assert.equal(await p.locator('#draft-evidence').inputValue(),'');assert.equal(JSON.stringify(await trips()),preserved);await p.locator('#draft-cancel').click();
   }
@@ -124,12 +124,12 @@ function result(url,model='metadata') {
    await p.locator('#draft-cancel').click();
   }
   let release;delay=new Promise(resolve=>release=resolve);const fetched=new Promise(resolve=>hit=resolve);
-  await p.locator('#link-url').fill(SOURCES.maps);await p.locator('#link-fetch').click();await fetched;const pendingTrips=JSON.stringify(await trips());await p.evaluate(()=>{document.querySelector('#draft-place').value='舊草稿不應加入';document.querySelector('#draft-date').value='2026-10-21';document.querySelector('#draft-period').value='morning';document.querySelector('#draft-start').value='09:00';document.querySelector('#draft-end').value='10:00';document.querySelector('#draft-confirm').checked=true;document.querySelector('#link-draft-form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));});assert.equal(JSON.stringify(await trips()),pendingTrips,'hidden pending draft cannot be submitted');await p.locator('#sign-out').click();await ensureLocked(p);release();await p.waitForTimeout(200);await ensureLocked(p);
+  await p.locator('#link-url').fill(SOURCES.maps);await p.locator('#link-fetch').click();await fetched;const pendingTrips=JSON.stringify(await trips());await p.evaluate(()=>{document.querySelector('#draft-place').value='舊草稿不應加入';document.querySelector('#draft-date').value='2026-10-21';document.querySelector('#draft-period').value='morning';document.querySelector('#draft-start').value='09:00';document.querySelector('#draft-end').value='10:00';document.querySelector('#draft-confirm').checked=true;document.querySelector('#link-draft-form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));});assert.equal(JSON.stringify(await trips()),pendingTrips,'hidden pending draft cannot be submitted');await signOut(p);await ensureLocked(p);release();await p.waitForTimeout(200);await ensureLocked(p);
   assert.equal(await p.locator('#link-url').inputValue(),'');assert.equal(await p.locator('#draft-place').inputValue(),'');assert.equal(await p.locator('#draft-notes').inputValue(),'');assert.ok(await p.locator('#link-draft-form').evaluate(e=>e.hidden));assert.deepEqual(errors,[]);
   delay=null;hit=null;
   for(const deniedStatus of [401,403]){
-   status=200;reply=null;await login(p);await p.locator('#activity-start').fill('09:00');await p.locator('#activity-end').fill('10:00');await p.locator('#activity-place').fill('拒絕後清除私人活動');await p.locator('#activity-submit').click();assert.equal(await p.locator('.activity-card').count(),1);
-   status=deniedStatus;reply={error:'Authorization denied'};await p.locator('#link-url').fill(SOURCES.maps);await p.locator('#link-fetch').click();await p.waitForFunction(()=>document.querySelector('#private-app').hidden);await ensureLocked(p);assert.equal(await p.locator('#link-url').inputValue(),'');assert.equal(await p.locator('#draft-evidence').inputValue(),'');assert.ok(await p.locator('#link-draft-form').evaluate(e=>e.hidden));assert.equal(await p.locator('.activity-card').count(),0);
+   status=200;reply=null;await login(p);await openEditor(p);await p.locator('#activity-start').fill('09:00');await p.locator('#activity-end').fill('10:00');await p.locator('#activity-place').fill('拒絕後清除私人活動');await p.locator('#activity-submit').click();assert.equal(await p.locator('.activity-card').count(),1);
+   await navigate(p,'link-import');status=deniedStatus;reply={error:'Authorization denied'};await p.locator('#link-url').fill(SOURCES.maps);await p.locator('#link-fetch').click();await p.waitForFunction(()=>document.querySelector('#private-app').hidden);await ensureLocked(p);assert.equal(await p.locator('#link-url').inputValue(),'');assert.equal(await p.locator('#draft-evidence').inputValue(),'');assert.ok(await p.locator('#link-draft-form').evaluate(e=>e.hidden));assert.equal(await p.locator('.activity-card').count(),0);
   }
   assert.deepEqual(errors,[]);
   console.log('PASS (mock Edge/public/model API): membership/CORS/model validation and safe fallback; SSRF redirects and shared deadline; bounded metadata; grounded Qwen/Llama responses; Maps/Threads/Instagram URL restrictions; editable evidence-backed draft; missing data stays blank; explicit schedule confirmation; invalid times; Qwen/Llama selection; manual failure guidance; version mismatch/404/422 recovery and 401/403 lock; attribution/source retention; XSS; keyboard/mobile; pending-response logout race.');

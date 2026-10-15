@@ -59,5 +59,27 @@ async function ensureLocked(page) {
   assert.equal(await page.evaluate(() => {try {window.TripPlanner.getTrips();return false;}catch{return true;}}),true);
   assert.equal(await page.evaluate(() => {try {window.TripPlanner.replaceTrips([]);return false;}catch{return true;}}),true);
   assert.equal(await page.locator('#activity-list').innerText(), '');
+  assert.equal(await page.locator('.bottom-nav').isVisible(),false);
+  assert.equal(await page.locator('#activity-editor').evaluate(element=>element.open),false);
 }
-module.exports={browser,assert,URL_BASE,SCOPE,USER_ID,googleUser,accessToken,authHash,publicConfig,configRoute,mockBackend,login,ensureLocked};
+async function navigate(page,view) {
+  await page.locator(`[data-nav="${view}"]`).click();
+  await page.locator(`#view-${view}`).waitFor({state:'visible'});
+}
+async function openEditor(page) {
+  if (!await page.locator('#activity-editor').isVisible()) await page.locator('[data-nav="add"]').click();
+  await page.locator('#activity-editor').waitFor({state:'visible'});
+}
+async function closeEditor(page) {
+  if (await page.locator('#activity-editor').isVisible()) await page.locator('[data-close-editor]').click();
+}
+async function openDetails(card) {
+  const details=card.locator('details.activity-details');
+  if (await details.count() && !await details.evaluate(element=>element.open)) await details.locator('summary').click();
+}
+async function signOut(page) {
+  await closeEditor(page);
+  await navigate(page,'sync');
+  await page.locator('#sign-out').click();
+}
+module.exports={browser,assert,URL_BASE,SCOPE,USER_ID,googleUser,accessToken,authHash,publicConfig,configRoute,mockBackend,login,ensureLocked,navigate,openEditor,closeEditor,openDetails,signOut};

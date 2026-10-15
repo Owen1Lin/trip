@@ -24,6 +24,8 @@ Google Maps 若只回傳通用頁面，可從成功解析的公開地點網址�
 
 ## 開發與部署
 
+網站以手機操作為主：底部「行程／新增／匯入／共同手帳」切換主要工作，五天日期列方便換天；活動在對話框新增／編輯，備註與移動／複製可展開。設計參考、操作取捨與驗收範圍見 [DESIGN.md](DESIGN.md)。
+
 ```sh
 cd /workspace/trip
 python3 -m http.server 3000 --bind 0.0.0.0
@@ -41,6 +43,7 @@ python3 -m http.server 3000 --bind 0.0.0.0
 node tests/planner.test.cjs
 node tests/cloud.test.cjs
 node tests/link-import.test.cjs
+node tests/mobile-flow.test.cjs
 ```
 
 可用 `TEST_URL` 指定服務網址、`CHROMIUM_PATH` 指定 Chromium 路徑。瀏覽器測試使用模擬登入及 API；它不能證明真實 Google 登入、Supabase 成員權限、兩人共享或正式部署已驗證。正式驗收需以兩個授權 Gmail 帳號與一個非成員帳號實際測試。
