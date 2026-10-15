@@ -11,6 +11,7 @@ const CATEGORIES = ['景點', '購物', '美食', '交通', '住宿', '自訂'];
 const emptyTrip = () => ({ id: 'fukuoka-20261021', name: '福岡＆九州五日旅行', destination: '福岡＆九州', startDate: '2026-10-21', dayCount: 5, days: [[], [], [], [], []] });
 let session = null, trip = null, activeDay = 0, editingId = null;
 let sessionGeneration = 0;
+let preservedDraftKey = null;
 const newId = () => crypto.randomUUID();
 const authorized = () => session !== null;
 function requireAuth() { if (!authorized()) throw new Error('請先以獲授權的 Google 帳號登入。'); }
@@ -168,8 +169,12 @@ $('#import-file').addEventListener('change', async event => {
   } catch(error) { if(authorized()&&generation===sessionGeneration) toast(error instanceof SyntaxError?'JSON 無法解析，原有資料未變更。':error.message); }
   finally { event.target.value=''; }
 });
-function lock() {
-  if (session) { try { sessionStorage.removeItem(keyFor(session)); } catch {} }
+function lock({preserveDraft=false} = {}) {
+  if (preserveDraft && session) preservedDraftKey=keyFor(session);
+  if (!preserveDraft) {
+    for (const key of new Set([session ? keyFor(session) : null,preservedDraftKey])) { if(key)try { sessionStorage.removeItem(key); } catch {} }
+    preservedDraftKey=null;
+  }
   sessionGeneration++; session=null; trip=null; activeDay=0;
   window.dispatchEvent(new CustomEvent('trip-planner-locked'));
   resetEditor(); $('#day-tabs').replaceChildren(); $('#activity-list').replaceChildren(); $('#day-summary').textContent=''; $('#storage-status').textContent=''; $('#sync-status').textContent=''; $('#account-email').textContent=''; $('#account-email').className='account-email'; $('#import-file').value=''; $('#toast').textContent=''; $('#toast').classList.remove('visible'); clearTimeout(toast.timer);
@@ -177,7 +182,7 @@ function lock() {
   $('#private-app').hidden=true; $('#private-app').inert=true; $('#auth-screen').hidden=false;
 }
 async function unlock() {
-  lock(); const generation=sessionGeneration;
+  lock({preserveDraft:true}); const generation=sessionGeneration;
   if (!window.TripAuth || typeof window.TripAuth.requireMembership!=='function') throw new Error('登入驗證尚未準備完成。');
   const identity=await window.TripAuth.requireMembership();
   if (generation!==sessionGeneration) throw new Error('登入狀態已變更，請重新登入。');
@@ -185,6 +190,8 @@ async function unlock() {
   const email=typeof identity?.email==='string'?identity.email.toLowerCase():'';
   if (typeof userId!=='string'||!userId||identity.scope!==SCOPE||!email.endsWith('@gmail.com')||!['owen','winnie'].includes(identity.actor)) throw new Error('此 Google 帳號未獲授權使用共同空間。');
   session={userId,email,scope:SCOPE,actor:identity.actor}; trip=emptyTrip(); let restoredDraft=false;
+  if(preservedDraftKey && preservedDraftKey!==keyFor(session)) { try { sessionStorage.removeItem(preservedDraftKey); } catch {} }
+  preservedDraftKey=null;
   $('#account-email').textContent=`${ACTOR_NAMES[session.actor]} · ${email}`;
   $('#account-email').className=`account-email actor-${session.actor}`;
   try { const raw=sessionStorage.getItem(keyFor(session)); if(raw) { const value=JSON.parse(raw); if(value.version!==2) throw new Error('version'); trip=validateTrips(value.trips)[0]; restoredDraft=true; } $('#storage-status').textContent='本次登入暫存已就緒；請從雲端載入共同手帳。'; }

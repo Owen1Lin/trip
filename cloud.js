@@ -2,14 +2,16 @@
 (() => {
   const config = window.TRIP_CLOUD_CONFIG || {};
   const scope = 'owen-winnie-20261021';
-  const sessionKey = 'trip-google-session-v2';
+  const legacySessionKey = 'trip-google-session-v2';
+  const projectHost = (()=>{try{return new URL(config.url).hostname;}catch{return 'unconfigured';}})();
+  const sessionKey = `trip-google-session-v3-${projectHost}-${scope}`;
   const revisionKey = identity => `trip-shared-base-v2-${scope}-${identity.id}`;
   const screen = document.querySelector('#auth-screen');
   const panel = document.querySelector('#auth-panel');
   const app = document.querySelector('#private-app');
   if (!screen || !panel || !app) return;
   let session = null, member = null, revision = null, busy = false, generation = 0, refreshInFlight = null;
-  let authStatus;
+  let authStatus, storageNotice = '', persistentSession = false;
   const rejected = text => Object.assign(new Error(text), { denied: true });
   function element(tag, text, className) {
     const node = document.createElement(tag);
@@ -33,10 +35,40 @@
     const target = internal ? document.querySelector('#sync-status') : authStatus;
     if (target) target.textContent = text;
   }
+  function showStorageNotice() {
+    let notice=document.querySelector('#auth-storage-notice');
+    if(!storageNotice){notice?.remove();return;}
+    if(!notice){notice=element('p','','save-status');notice.id='auth-storage-notice';notice.setAttribute('role','status');app.prepend(notice);}
+    notice.textContent=storageNotice;
+  }
+  function clearTabCredentials() {
+    for (const key of [sessionKey, legacySessionKey]) { try { sessionStorage.removeItem(key); } catch {} }
+  }
+  function readStoredSession({ migrate = false } = {}) {
+    let raw;
+    try { raw = localStorage.getItem(sessionKey); if (raw) persistentSession = true; } catch {}
+    if (!raw) { try { raw = sessionStorage.getItem(sessionKey) || (migrate ? sessionStorage.getItem(legacySessionKey) : null); } catch {} }
+    if (!raw) return null;
+    try { return validSession(JSON.parse(raw)); } catch { throw rejected('登入資訊不完整，請重新登入。'); }
+  }
   function remember(value) {
     session = value;
-    try { value ? sessionStorage.setItem(sessionKey, JSON.stringify(value)) : sessionStorage.removeItem(sessionKey); }
-    catch { /* Current tab remains usable; a new visit needs login. */ }
+    if (!value) {
+      persistentSession = false; storageNotice = '';
+      try { localStorage.removeItem(sessionKey); } catch {}
+      clearTabCredentials(); showStorageNotice(); return;
+    }
+    try {
+      localStorage.setItem(sessionKey, JSON.stringify(value)); persistentSession = true; storageNotice = ''; clearTabCredentials();
+    } catch {
+      persistentSession = false;
+      storageNotice = '瀏覽器無法持續記住登入；目前僅此分頁有效，關閉後可能需要重新登入。';
+      try { sessionStorage.setItem(sessionKey, JSON.stringify(value)); sessionStorage.removeItem(legacySessionKey); } catch {}
+    }
+    showStorageNotice();
+  }
+  function tokenUser(value) {
+    try { const part=value.access_token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'); return JSON.parse(atob(part.padEnd(Math.ceil(part.length/4)*4,'='))).sub; } catch { return null; }
   }
   function setRevision(value) {
     revision = value;
@@ -60,11 +92,12 @@
         ...(body === undefined ? {} : { body: JSON.stringify(body) })
       });
       const text = await response.text();
+      if (path === '/auth/v1/token?grant_type=refresh_token' && response.status === 400) throw rejected('登入已失效，請重新使用 Google 登入。');
+      if (response.status === 401) throw rejected('登入已失效，請重新使用 Google 登入。');
+      if (response.status === 403) throw rejected('這個帳號尚未獲准使用專屬空間。');
       let data = null;
       try { data = text ? JSON.parse(text) : null; } catch { throw new Error('服務回應格式異常，請稍後再試。'); }
       if (!response.ok) {
-        if (response.status === 401) throw rejected('登入已失效，請重新使用 Google 登入。');
-        if (response.status === 403) throw rejected('這個帳號尚未獲准使用專屬空間。');
         if (path === '/functions/v1/link-import' && response.status === 404) throw new Error('Supabase 尚未部署 link-import 公開連結匯入服務，請通知歐文完成部署。');
         if (path === '/functions/v1/link-import' && response.status === 422) throw new Error('平台限制或此連結沒有可讀取的公開資料，請核對原始連結後手動填寫。');
         if (response.status === 404) throw new Error('專屬空間尚未完成設定，請通知歐文。');
@@ -81,15 +114,59 @@
   }
   async function refreshSession() {
     if (!session) throw rejected('請先使用 Google 登入。');
-    if (session.expires_at > Date.now() / 1000 + 60) return;
     if (!refreshInFlight) {
-      const attempt = generation, token = session.refresh_token;
-      refreshInFlight = request('/auth/v1/token?grant_type=refresh_token', {
-        method: 'POST', body: { refresh_token: token }, auth: false
-      }).then(data => {
-        if (attempt !== generation) throw rejected('已登出，請重新登入。');
-        remember(validSession({ ...data, expires_at: Date.now() / 1000 + Number(data.expires_in || 3600) }));
-      }).finally(() => { refreshInFlight = null; });
+      const attempt = generation;
+      const refresh = async () => {
+        if (attempt !== generation || !session) throw rejected('登入狀態已變更，請重新登入。');
+        const latest = readStoredSession();
+        if (latest) {
+          if (tokenUser(latest) !== tokenUser(session)) { session=latest; throw Object.assign(new Error('登入帳號已變更，請重新連線確認身份。'),{accountChanged:true}); }
+          session = latest;
+        } else if (persistentSession) throw rejected('已在其他分頁登出，請重新登入。');
+        if (session.expires_at > Date.now() / 1000 + 60) return;
+        let token = session.refresh_token;
+        for (let retry = 0; retry < 2; retry++) {
+          let data;
+          try {
+            data = await request('/auth/v1/token?grant_type=refresh_token', { method:'POST',body:{refresh_token:token},auth:false });
+          } catch (error) {
+            if (attempt !== generation) throw rejected('登入狀態已變更，請重新登入。');
+            // Without Web Locks, give another tab's in-flight rotation a short
+            // chance to publish its token before treating an old token as revoked.
+            if (!navigator.locks?.request && error.denied && !retry) {
+              for (let wait=0;wait<5;wait++) {
+                const current=readStoredSession();
+                if (current && current.refresh_token!==token) break;
+                await new Promise(resolve=>setTimeout(resolve,150));
+                if (attempt!==generation) throw rejected('登入狀態已變更，請重新登入。');
+              }
+            }
+            const rotated = readStoredSession();
+            if (!retry && rotated && rotated.refresh_token !== token && tokenUser(rotated) === tokenUser(session)) {
+              session=rotated;
+              if (rotated.expires_at > Date.now()/1000+60) return;
+              token=rotated.refresh_token; continue;
+            }
+            throw error;
+          }
+          if (attempt !== generation || !session) throw rejected('已登出，請重新登入。');
+          const stored = readStoredSession();
+          if (!stored && persistentSession) throw rejected('已在其他分頁登出，請重新登入。');
+          if (stored && stored.refresh_token !== token) {
+            if (tokenUser(stored) !== tokenUser(session)) { session=stored; throw Object.assign(new Error('登入帳號已變更，請重新連線確認身份。'),{accountChanged:true}); }
+            session=stored;
+            if(stored.expires_at>Date.now()/1000+60)return;
+            if(!retry){token=stored.refresh_token;continue;}
+            throw new Error('其他分頁正在更新登入，請重新連線。');
+          }
+          const refreshed=validSession({...data,expires_at:Date.now()/1000+Number(data.expires_in || 3600)});
+          if(tokenUser(refreshed)!==tokenUser(session)) { remember(refreshed); throw Object.assign(new Error('登入帳號已變更，請重新連線確認身份。'),{accountChanged:true}); }
+          remember(refreshed); return;
+        }
+      };
+      let flight;
+      flight = (navigator.locks?.request ? navigator.locks.request(`${sessionKey}-refresh`, refresh) : refresh()).finally(() => { if(refreshInFlight===flight)refreshInFlight=null; });
+      refreshInFlight=flight;
     }
     await refreshInFlight;
   }
@@ -118,7 +195,7 @@
       member = { id: user.id, email, scope, actor: members[0].actor, displayName: members[0].display_name };
       return { ...member };
     } catch (error) {
-      if (error.denied && attempt === generation) lock(error.message);
+      if (attempt === generation && (error.denied || error.accountChanged)) lock(error.message, { forget: Boolean(error.denied), ...(error.accountChanged ? {preserveDraft:false}: {}) });
       throw error;
     }
   }
@@ -155,16 +232,24 @@
     });
     authStatus = element('p', text || (!validConfig() ? '登入服務尚未設定，請通知歐文。' : ''), 'auth-status');
     authStatus.setAttribute('role', 'status'); authStatus.setAttribute('aria-live', 'polite');
-    panel.append(button, authStatus);
+    panel.append(button);
+    if (session) {
+      const reconnect=element('button','重新連線','secondary-button');reconnect.type='button';reconnect.id='auth-reconnect';
+      reconnect.addEventListener('click',async()=>{reconnect.disabled=true;await connect();if(reconnect.isConnected)reconnect.disabled=false;});panel.append(reconnect);
+    }
+    panel.append(authStatus);
   }
-  function lock(text = '') {
+  function lock(text = '', { forget = true, preserveDraft = !forget } = {}) {
     generation++; app.hidden = true; app.inert = true; screen.hidden = false;
-    window.TripPlanner?.lock();
-    if (member) { try { sessionStorage.removeItem(revisionKey(member)); } catch { /* Storage can be disabled. */ } }
-    remember(null); member = null; revision = null;
+    refreshInFlight=null;
+    window.TripPlanner?.lock({preserveDraft});
+    if ((forget || !preserveDraft) && member) { try { sessionStorage.removeItem(revisionKey(member)); } catch {} }
+    if (forget) remember(null);
+    if(forget || !preserveDraft)member = null;
+    revision = null;
     const email = document.querySelector('#account-email');
     if (email) { email.textContent = ''; email.classList.remove('actor-owen', 'actor-winnie'); }
-    renderLogin(text);
+    renderLogin([text,storageNotice].filter(Boolean).join(' '));
   }
   async function sharedSnapshot() {
     await requireMembership();
@@ -194,6 +279,7 @@
     screen.hidden = true; app.hidden = false; app.inert = false;
     message(keptDraft ? '已保留這個頁面的未同步草稿。若另一位有新修改，請先匯出備份，再載入共同手帳。'
       : snapshot ? '已載入我們的共同行程。修改後請儲存到雲端。' : '先安排想去的地方，再儲存到我們的共同行程。', true);
+    if (storageNotice) message(`${document.querySelector('#sync-status').textContent} ${storageNotice}`,true);
   }
   async function perform(task) {
     if (busy || !session || app.hidden) return;
@@ -239,6 +325,23 @@
   window.addEventListener('trip-planner-changed', () => {
     if (member && session && !app.hidden && !busy) message('有尚未同步的修改，完成後請儲存到雲端。', true);
   });
+  async function connect() {
+    const attempt=generation;
+    message('正在確認登入狀態…');
+    try { await openPrivateSpace(); }
+    catch(error) { if(attempt===generation)lock(error.message,{forget:Boolean(error.denied)}); }
+  }
+  window.addEventListener('storage',event=>{
+    if (event.key!==sessionKey && event.key!==null) return;
+    if (event.key===null || event.newValue===null) {
+      session=null;persistentSession=false;clearTabCredentials();lock('已在其他分頁登出。',{forget:false,preserveDraft:false});return;
+    }
+    let next;try { next=readStoredSession();if(!next)throw new Error('Missing session'); } catch { lock('登入資料已變更，請重新登入。');return; }
+    if (!session || tokenUser(next)!==tokenUser(session)) {
+      lock('其他分頁已變更登入帳號，請重新連線確認身份。',{forget:false,preserveDraft:false});session=next;persistentSession=true;renderLogin('其他分頁已變更登入帳號，請重新連線確認身份。');
+    } else { session=next;persistentSession=true; }
+  });
+  window.addEventListener('pageshow',event=>{if(event.persisted && session){lock('正在重新確認登入狀態…',{forget:false});connect();}});
   async function init() {
     const hash = new URLSearchParams(location.hash.slice(1));
     const callback = hash.has('access_token') || hash.has('error') || hash.has('error_description');
@@ -246,13 +349,15 @@
     renderLogin('正在確認登入狀態…'); app.hidden = true; app.inert = true;
     try {
       if (callback && hash.has('access_token')) {
-        remember(validSession({ access_token: hash.get('access_token'), refresh_token: hash.get('refresh_token'),
-          expires_at: Date.now() / 1000 + Number(hash.get('expires_in') || 3600) }));
-      } else if (callback) { lock('Google 登入未完成，請再試一次。'); return; }
-      else { try { const raw = sessionStorage.getItem(sessionKey); if (raw) session = validSession(JSON.parse(raw)); } catch { session = null; } }
-      if (!session) { lock(); return; }
-      await openPrivateSpace();
-    } catch (error) { lock(error.message); }
+        remember(validSession({ access_token:hash.get('access_token'),refresh_token:hash.get('refresh_token'),expires_at:Date.now()/1000+Number(hash.get('expires_in') || 3600) }));
+      } else if (callback) { lock('Google 登入未完成，請再試一次。');return; }
+      else {
+        const restore=()=>{const restored=readStoredSession({migrate:true});if(restored){if(persistentSession){session=restored;clearTabCredentials();}else remember(restored);}};
+        if(navigator.locks?.request)await navigator.locks.request(`${sessionKey}-refresh`,restore);else restore();
+      }
+      if (!session) { lock();return; }
+      await connect();
+    } catch(error) { lock(error.message,{forget:Boolean(error.denied) || error instanceof SyntaxError}); }
   }
   init();
 })();
