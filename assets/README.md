@@ -1,6 +1,6 @@
 # 圖片來源
 
-`1015.jpeg` 為使用者提供的主畫面圖示原圖；`apple-touch-icon-v1.png`（180×180）與 `favicon-v1.png`（32×32）由原圖等比例縮小並轉為 PNG，保留完整構圖。
+`1015.jpeg` 為使用者提供的原圖。依使用者要求，`travel-icon-fullbleed.png` 以原圖編修移除外圍白邊、底框與陰影，將奶油色背景延伸至四邊；由此縮小輸出 `apple-touch-icon-v2.png`（180×180）、`favicon-v2.png`（32×32）與站內標誌 `travel-brand-v2.png`（256×256）。iPhone 由系統套用主畫面圓角。
 
 照片下載自 Unsplash 的公開圖片服務，依 Unsplash License 使用於網站旅行氛圍示意，不代表特定景點的實際照片。
 
