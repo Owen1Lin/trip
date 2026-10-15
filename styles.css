@@ -197,65 +197,12 @@ p {
 .sync-indicator:hover {
   border-color:#92ac95;
 }
-.trip-heading {
-  padding:18px 0 22px;
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:10px;
-  border-top:1px solid var(--border)
-}
 
-.trip-heading h1 {
-  font-size:27px;
-  letter-spacing:-.8px;
-  margin:0;
-  font-weight:750
-}
-
-.trip-heading h1 span {
-  display:block;
-  font-size:13px;
-  letter-spacing:0;
-  font-weight:400;
-  color:var(--muted);
-  margin-top:6px
-}
-
-.trip-meta {
-  font-size:11px;
-  color:var(--muted);
-  margin:12px 0 0;
-  font-variant-numeric:tabular-nums
-}
 
 .trip-meta>span {
   margin:0 5px
 }
 
-.trip-mark {
-  width:62px;
-  height:74px;
-  display:grid;
-  place-content:center;
-  border:1px solid #c5d3c8;
-  border-radius:24px 24px 8px 8px;
-  transform:rotate(7deg);
-  color:var(--green);
-  text-align:center;
-  background:#edf2e9;
-  flex-shrink:0
-}
-
-.trip-mark>span {
-  font:30px/1.2 serif
-}
-
-.trip-mark small {
-  font-size:6px;
-  letter-spacing:1px;
-  margin-top:5px
-}
 
 .app-view {
   min-width:0
@@ -339,37 +286,6 @@ p {
   border-color:var(--green)
 }
 
-.itinerary-heading {
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:8px;
-  margin-top:25px
-}
-
-.itinerary-heading .eyebrow {
-  font-size:8px;
-  letter-spacing:1.8px;
-  margin-bottom:4px
-}
-
-.day-heading {
-  margin:0;
-  font-size:20px;
-  letter-spacing:-.4px
-}
-
-.day-note {
-  font-size:11px;
-  color:var(--muted);
-  margin:9px 0 25px
-}
-
-#day-progress {
-  font-size:11px;
-  color:var(--muted);
-  margin-top:5px
-}
 
 .primary-button,.secondary-button,.danger-button,.icon-button {
   display:inline-flex;
@@ -416,10 +332,6 @@ p {
   background:#fff1ed
 }
 
-.compact-add {
-  font-size:12px;
-  padding-inline:11px
-}
 
 .icon-button {
   background:#f0f3ed;
@@ -436,30 +348,8 @@ p {
 }
 
 /* Daily activities form a readable timeline, with the quieter details folded away. */
-.period-sections {
-  display:grid;
-  gap:24px
-}
 
-.period-section {
-  position:relative;
-  min-width:0;
-  padding-left:19px
-}
 
-.period-section:before {
-  content:"";
-  position:absolute;
-  left:3px;
-  top:28px;
-  bottom:-24px;
-  width:1px;
-  background:#d6dfd5
-}
-
-.period-section:last-child:before {
-  bottom:24px
-}
 
 .period-header {
   display:flex;
@@ -469,93 +359,7 @@ p {
   margin:0 0 11px
 }
 
-.period-heading {
-  font-size:14px;
-  font-weight:700;
-  margin:0;
-  display:flex;
-  align-items:center;
-  gap:8px
-}
 
-.period-heading:before {
-  content:"";
-  position:absolute;
-  left:-1px;
-  width:9px;
-  height:9px;
-  border:2px solid var(--paper);
-  background:#bc935e;
-  border-radius:50%;
-  box-shadow:0 0 0 1px #bc935e
-}
-
-.period-section:nth-child(2) .period-heading:before {
-  background:#d17a58;
-  box-shadow:0 0 0 1px #d17a58
-}
-
-.period-section:nth-child(3) .period-heading:before {
-  background:#6b84a3;
-  box-shadow:0 0 0 1px #6b84a3
-}
-
-.period-add {
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  min-height:44px;
-  padding:5px 9px;
-  background:transparent;
-  border:0;
-  color:var(--green);
-  font-size:12px;
-  font-weight:600
-}
-
-.period-list {
-  display:grid;
-  gap:12px
-}
-
-.empty-state {
-  margin:0;
-  padding:21px 15px;
-  border:1px dashed #cfdcce;
-  border-radius:13px;
-  background:#eef2eb;
-  font-size:12px;
-  line-height:1.9;
-  color:var(--muted)
-}
-
-.activity-card {
-  position:relative;
-  min-width:0;
-  border:1px solid var(--border);
-  border-radius:14px;
-  padding:16px;
-  background:var(--surface);
-  box-shadow:var(--shadow)
-}
-
-.activity-time {
-  display:inline-block;
-  padding:4px 8px;
-  border-radius:6px;
-  background:var(--mint);
-  font-size:11px;
-  color:var(--green);
-  font-weight:700;
-  font-variant-numeric:tabular-nums;
-  letter-spacing:.4px;
-  margin-bottom:10px
-}
-
-.activity-content {
-  min-width:0;
-  overflow-wrap:anywhere
-}
 
 .category-badge {
   display:inline-block;
@@ -674,32 +478,6 @@ p {
   padding:8px 10px
 }
 
-.activity-details {
-  margin-top:12px;
-  border-top:1px solid #edf0e9;
-  padding-top:4px
-}
-
-.activity-details>summary {
-  font-size:11px;
-  min-height:44px;
-  display:flex;
-  align-items:center;
-  gap:8px;
-  cursor:pointer;
-  color:var(--green);
-  list-style:none
-}
-
-.activity-details>summary:after {
-  content:"⌄";
-  font-size:17px;
-  margin-left:auto
-}
-
-.activity-details[open]>summary:after {
-  transform:rotate(180deg)
-}
 
 .activity-transfer {
   display:grid;
@@ -726,21 +504,6 @@ p {
   min-height:44px
 }
 
-.itinerary-end {
-  padding:30px 0 6px;
-  text-align:center;
-  color:var(--muted)
-}
-
-.itinerary-end>span {
-  font-size:23px;
-  color:#8da58f
-}
-
-.itinerary-end p {
-  font-size:11px;
-  margin:6px 0 15px
-}
 
 .bottom-nav {
   position:fixed;
@@ -1410,6 +1173,297 @@ body.mobile-editor-open {
   color:var(--muted)
 }
 
+/* Compact rows keep the date strip close to the activities on every phone. */
+.trip-heading {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  border-top:1px solid var(--border);
+  padding:12px 0;
+}
+.trip-heading h1 {
+  margin:0;
+  font-size:22px;
+  letter-spacing:-.5px;
+}
+.trip-meta {
+  margin:4px 0 0;
+  font-size:11px;
+  color:var(--muted);
+}
+.trip-meta>span {
+  margin-inline:4px;
+}
+.trip-duration {
+  font-size:9px;
+  color:var(--green);
+  letter-spacing:1px;
+  white-space:nowrap;
+}
+.period-sections {
+  display:grid;
+  gap:18px;
+  margin-top:18px;
+}
+.period-section {
+  min-width:0;
+}
+.period-header {
+  margin-bottom:8px;
+}
+.period-heading {
+  margin:0;
+  font-size:13px;
+  font-weight:700;
+}
+.period-list {
+  display:grid;
+  gap:7px;
+}
+.empty-state {
+  padding:13px 12px;
+  margin:0;
+  border:1px dashed #d8e1d5;
+  border-radius:9px;
+  color:var(--muted);
+  font-size:12px;
+  background:#eff3ed;
+}
+.activity-card {
+  min-width:0;
+  padding:0;
+  border:1px solid var(--border);
+  border-radius:10px;
+  background:#fff;
+  box-shadow:0 3px 12px #223d3403;
+}
+.activity-details {
+  margin:0;
+  padding:0;
+  border:0;
+}
+.activity-details>summary.activity-row {
+  display:grid;
+  grid-template-columns:82px 29px minmax(0,1fr) 24px 8px;
+  align-items:center;
+  gap:5px;
+  min-height:54px;
+  padding:10px 8px;
+  cursor:pointer;
+  list-style:none;
+}
+.activity-row::-webkit-details-marker {
+  display:none;
+}
+.activity-details>summary.activity-row:after {
+  content:"⌄";
+  color:var(--muted);
+  font-size:14px;
+  line-height:1;
+}
+.activity-details[open]>summary.activity-row:after {
+  transform:rotate(180deg);
+}
+.row-time {
+  font-size:11px;
+  letter-spacing:-.2px;
+  font-weight:650;
+  color:var(--green);
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+}
+.row-category {
+  margin:0;
+  font-size:11px;
+  line-height:1.5;
+  color:#80653d;
+  background:#f7f2e8;
+  padding:3px 2px;
+  border-radius:4px;
+  text-align:center;
+}
+.row-title {
+  display:block;
+  min-width:0;
+  font-size:14px;
+  font-weight:650;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.row-actor {
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  font-size:11px;
+  white-space:nowrap;
+  color:var(--actor-ink,var(--muted));
+  background:var(--actor-paper,#f0f3ee);
+  padding:3px 1px;
+  border-radius:4px;
+  text-align:center;
+}
+.activity-details>.activity-content {
+  min-width:0;
+  padding:0 14px 14px;
+  overflow-wrap:anywhere;
+}
+.activity-content h4 {
+  overflow-wrap:anywhere;
+}
+.is-completed .row-title {
+  text-decoration:line-through;
+  color:var(--muted);
+}
+.quick-preview {
+  margin:0 0 22px;
+  padding:13px 14px;
+  border:1px solid #d7e2d4;
+  border-radius:10px;
+  background:#f0f5ed;
+  color:var(--green);
+  font-size:13px;
+  line-height:1.9;
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+}
+#activity-text {
+  min-height:116px;
+}
+.save-reminder {
+  position:fixed;
+  z-index:14;
+  left:12px;
+  right:12px;
+  bottom:calc(var(--nav-height) + env(safe-area-inset-bottom) + 8px);
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:10px 12px;
+  border:1px solid #e0c18c;
+  border-radius:13px;
+  background:#fff6e6;
+  box-shadow:0 5px 24px #4e391019;
+}
+#save-reminder-status {
+  margin:0;
+  min-width:0;
+  color:#7d561e;
+  font-size:12px;
+  line-height:1.6;
+}
+#save-now {
+  min-width:76px;
+  flex-shrink:0;
+}
+.save-reminder[data-state=dirty] {
+  animation:save-attention .8s ease-out 1;
+}
+.save-reminder[data-state=saved] {
+  background:var(--mint);
+  border-color:#c6d9c6;
+}
+.save-reminder[data-state=saved] #save-reminder-status {
+  color:var(--green);
+}
+.save-reminder[data-state=error] {
+  border-color:#dfb1a1;
+  background:#fff0e9;
+}
+.save-reminder[data-state=error] #save-reminder-status {
+  color:#924735;
+}
+body.mobile-editor-open .save-reminder {
+  display:none;
+}
+#private-app:has(.save-reminder:not([hidden])) {
+  padding-bottom:calc(var(--nav-height) + env(safe-area-inset-bottom) + 108px);
+}
+@keyframes save-attention {
+  0% { box-shadow:0 0 0 0 #c4984640; }
+  75% { box-shadow:0 0 0 7px #c4984600; }
+  100% { box-shadow:0 5px 24px #4e391019; }
+}
+.auth-restoring {
+  min-height:100svh;
+  padding:24px 20px;
+  background:var(--paper);
+}
+.restoring-shell {
+  max-width:1100px;
+  margin:auto;
+}
+.restoring-brand {
+  display:flex;
+  align-items:center;
+  gap:10px;
+  color:var(--green);
+  font-size:17px;
+  font-weight:700;
+  margin-bottom:25px;
+}
+.restoring-brand img {
+  border-radius:12px;
+}
+.restoring-shell>p {
+  font-size:12px;
+  color:var(--muted);
+}
+.restoring-title,.restoring-dates>span,.restoring-row {
+  background:#e7ede3;
+  border-radius:10px;
+}
+.restoring-title {
+  width:42%;
+  height:24px;
+  margin:18px 0;
+}
+.restoring-dates {
+  display:grid;
+  grid-template-columns:repeat(5,minmax(0,1fr));
+  gap:7px;
+  margin:22px 0;
+}
+.restoring-dates>span {
+  height:80px;
+}
+.restoring-row {
+  height:50px;
+  margin-bottom:10px;
+}
+@media(min-width:480px) {
+  .activity-details>summary.activity-row {
+    grid-template-columns:100px 40px minmax(0,1fr) 34px 10px;
+    gap:10px;
+    padding:11px 13px;
+  }
+  .row-time,.row-category,.row-actor { font-size:12px; }
+}
+@media(min-width:768px) {
+  .trip-heading { padding:20px 0; }
+  .trip-heading h1 { font-size:28px; }
+  .trip-duration { font-size:11px; }
+  .activity-details>summary.activity-row {
+    grid-template-columns:130px 58px minmax(0,1fr) 50px 10px;
+    min-height:60px;
+    gap:16px;
+    padding:12px 18px;
+  }
+  .row-title { font-size:16px; }
+  .row-time,.row-category,.row-actor { font-size:13px; }
+  .activity-details>.activity-content { padding:0 20px 20px; }
+  .save-reminder {
+    max-width:560px;
+    left:50%;
+    right:auto;
+    width:calc(100% - 48px);
+    transform:translateX(-50%);
+    bottom:20px;
+  }
+}
+
 /* Layout expands only when there is room for more than the essentials. */
 @media(min-width:480px) {
   #private-app {
@@ -1425,24 +1479,14 @@ body.mobile-editor-open {
   .day-tab-count {
     font-size:10px
   }
-  .trip-heading h1 {
-    font-size:32px
-  }
-  .trip-heading h1 span {
-    font-size:14px
-  }
-  .trip-meta {
-    font-size:12px
-  }
+
   .draft-schedule .form-grid {
     grid-template-columns:repeat(2,minmax(0,1fr))
   }
   .link-import-panel {
     padding:25px
   }
-  .activity-card {
-    padding:20px
-  }
+
   .custom-field-row {
     grid-template-columns:minmax(0,1fr) minmax(0,1.2fr) 44px
   }
@@ -1509,26 +1553,9 @@ body.mobile-editor-open {
     width:25px;
     height:25px
   }
-  .trip-heading {
-    border:0;
-    padding:34px 0
-  }
-  .trip-heading h1 {
-    font-size:38px
-  }
-  .trip-heading h1 span {
-    margin-top:10px
-  }
-  .trip-mark {
-    width:82px;
-    height:94px
-  }
-  .trip-mark>span {
-    font-size:38px
-  }
-  .trip-mark small {
-    font-size:8px
-  }
+
+
+
   .date-navigation {
     top:70px;
     margin:0 -40px;
@@ -1553,47 +1580,9 @@ body.mobile-editor-open {
   .date-heading {
     margin-bottom:12px
   }
-  .itinerary-heading {
-    margin-top:32px
-  }
-  .day-heading {
-    font-size:26px
-  }
-  .itinerary-heading .eyebrow {
-    font-size:9px
-  }
-  .compact-add {
-    font-size:12px;
-    padding-inline:17px
-  }
-  .day-note {
-    font-size:12px;
-    margin-bottom:30px
-  }
-  .period-sections {
-    gap:28px
-  }
-  .period-section {
-    padding-left:28px
-  }
-  .period-section:before {
-    left:4px;
-    bottom:-28px
-  }
-  .period-heading {
-    font-size:16px
-  }
-  .period-heading:before {
-    left:0;
-    width:10px;
-    height:10px
-  }
-  .period-list {
-    gap:15px
-  }
-  .activity-card {
-    padding:22px
-  }
+
+
+
   .activity-content h4 {
     font-size:20px
   }
@@ -1678,9 +1667,7 @@ body.mobile-editor-open {
   .private-footer {
     padding-top:45px
   }
-  .itinerary-end {
-    padding-top:40px
-  }
+
 }
 
 @media(min-width:1024px) {
@@ -1696,16 +1683,8 @@ body.mobile-editor-open {
     grid-template-columns:repeat(4,155px);
     justify-content:center
   }
-  .trip-heading {
-    padding-block:40px
-  }
-  .trip-heading h1 {
-    font-size:42px
-  }
-  .trip-mark {
-    width:90px;
-    height:105px
-  }
+
+
   .date-navigation {
     margin-inline:-60px;
     padding-inline:60px
@@ -1737,44 +1716,16 @@ body.mobile-editor-open {
     align-self:start;
     margin-top:3px
   }
-  .period-sections {
-    gap:32px
-  }
-  .period-section {
-    padding-left:32px
-  }
-  .period-section:before {
-    bottom:-32px
-  }
-  .activity-card {
-    display:grid;
-    grid-template-columns:140px minmax(0,1fr);
-    column-gap:20px;
-    align-items:start
-  }
-  .activity-time {
-    grid-column:1;
-    grid-row:1;
-    justify-self:start;
-    margin:2px 0 0;
-    padding:6px 10px
-  }
-  .activity-content {
-    grid-column:2;
-    grid-row:1
-  }
+
+
+
   .activity-actions {
     grid-column:2
   }
   .activity-transfer {
     grid-column:2
   }
-  .activity-details {
-    grid-column:2
-  }
-  .empty-state {
-    padding:24px
-  }
+
   .link-import-controls {
     grid-template-columns:minmax(0,1fr) minmax(220px,.6fr) auto;
     align-items:end
@@ -1816,4 +1767,20 @@ body.mobile-editor-open {
     transition:none!important;
     animation:none!important
   }
+}
+
+/* Keep sign-in hidden while the public restoration frame is still active. */
+body:has(#auth-restoring:not([hidden])) #auth-screen {
+  display:none;
+}
+#activity-period:disabled,#draft-period:disabled {
+  opacity:1;
+  color:#526b59;
+  background:#f0f4ed;
+  -webkit-text-fill-color:#526b59;
+}
+
+/* A confirmation toast must not obscure the unsaved-change reminder. */
+body:has(#save-reminder:not([hidden])) .toast {
+  bottom:calc(var(--nav-height) + env(safe-area-inset-bottom) + 94px);
 }

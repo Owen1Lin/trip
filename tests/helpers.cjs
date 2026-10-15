@@ -52,7 +52,7 @@ async function mockBackend(context, options={}) {
 let loginCounter = 0;
 async function login(page,user=googleUser(),method='oauth') {
   await page.goto(URL_BASE+'/?test-login='+(++loginCounter)+authHash(user,method));
-  await page.waitForFunction(()=>document.querySelector('#private-app') && !document.querySelector('#private-app').hidden && document.querySelector('#sync-status').textContent.includes('共同'));
+  await page.waitForFunction(()=>document.querySelector('#private-app') && !document.querySelector('#private-app').hidden && !document.querySelector('#cloud-save').disabled && document.querySelector('#sync-status').textContent.length>0);
 }
 async function ensureLocked(page) {
   assert.ok(await page.locator('#private-app').evaluate(e=>e.hidden && e.inert));
@@ -77,9 +77,21 @@ async function openDetails(card) {
   const details=card.locator('details.activity-details');
   if (await details.count() && !await details.evaluate(element=>element.open)) await details.locator('summary').click();
 }
+async function editActivity(page,place) {
+  await navigate(page,'itinerary');
+  const button=page.getByRole('button',{name:`編輯活動：${place}`,exact:true,includeHidden:true});
+  await openDetails(button.locator('xpath=ancestor::article'));
+  await button.click();
+}
+async function addActivity(page,place,start='',end='',date='') {
+  await openEditor(page);
+  const timing=start ? `${start}${end ? '-'+end : ''}` : '';
+  await page.locator('#activity-text').fill([place,date,timing].filter(Boolean).join(' '));
+  await page.locator('#activity-submit').click();
+}
 async function signOut(page) {
   await closeEditor(page);
   await navigate(page,'sync');
   await page.locator('#sign-out').click();
 }
-module.exports={browser,assert,URL_BASE,SCOPE,USER_ID,googleUser,accessToken,authHash,publicConfig,configRoute,mockBackend,login,ensureLocked,navigate,openEditor,closeEditor,openDetails,signOut};
+module.exports={browser,assert,URL_BASE,SCOPE,USER_ID,googleUser,accessToken,authHash,publicConfig,configRoute,mockBackend,login,ensureLocked,navigate,openEditor,closeEditor,openDetails,editActivity,addActivity,signOut};

@@ -10,8 +10,11 @@
   const panel = document.querySelector('#auth-panel');
   const app = document.querySelector('#private-app');
   if (!screen || !panel || !app) return;
+  const restoring = document.querySelector('#auth-restoring');
   let session = null, member = null, revision = null, busy = false, generation = 0, refreshInFlight = null;
   let authStatus, storageNotice = '', persistentSession = false;
+  let membershipFlight = null, verifiedContext = null, initialLoading = false;
+  let dirty = false, changeVersion = 0, reminderState = 'idle', reminderError = '', successTimer = null;
   const rejected = text => Object.assign(new Error(text), { denied: true });
   function element(tag, text, className) {
     const node = document.createElement(tag);
@@ -34,6 +37,41 @@
   function message(text, internal = false) {
     const target = internal ? document.querySelector('#sync-status') : authStatus;
     if (target) target.textContent = text;
+    if (internal) publishSyncState();
+  }
+  function syncState() {
+    const text = app.hidden ? '' : document.querySelector('#sync-status')?.textContent || '';
+    const status = app.hidden ? 'idle' : reminderState === 'saving' ? 'saving'
+      : reminderState === 'error' ? 'error' : dirty ? 'dirty'
+      : reminderState === 'saved' || text.includes('共同行程已儲存') ? 'saved'
+      : text.includes('已載入') ? 'loaded' : 'idle';
+    return { dirty, busy: busy || initialLoading, status, message: text };
+  }
+  function publishSyncState() {
+    window.dispatchEvent(new CustomEvent('trip-sync-state', { detail: syncState() }));
+  }
+  window.TripSync = Object.freeze({ getState: syncState });
+  function renderSaveReminder() {
+    const reminder = document.querySelector('#save-reminder');
+    const status = document.querySelector('#save-reminder-status');
+    const state = reminderState === 'saving' ? 'saving' : dirty ? (reminderState === 'error' ? 'error' : 'dirty') : reminderState;
+    if (reminder) {
+      reminder.hidden = app.hidden || !['dirty','saving','saved','error'].includes(state);
+      reminder.dataset.state = state;
+    }
+    if (status) status.textContent = app.hidden ? '' : state === 'saving' ? '正在儲存…'
+      : state === 'error' ? `${reminderError} 尚未儲存的修改仍保留。`
+      : state === 'dirty' ? '有未同步的修改，記得儲存。'
+      : state === 'saved' ? (document.querySelector('#activity-text')?.value.trim()
+        ? '儲存成功；輸入文字請先新增才會保存。' : '儲存成功') : '';
+    document.querySelectorAll('#cloud-save, #save-now, #cloud-load').forEach(button => { button.disabled = busy || initialLoading || app.hidden; });
+    publishSyncState();
+  }
+  function clearSuccessNotice() { clearTimeout(successTimer); successTimer = null; }
+  function showRestoring() {
+    app.hidden = true; app.inert = true;
+    screen.hidden = Boolean(restoring);
+    if (restoring) restoring.hidden = false;
   }
   function showStorageNotice() {
     let notice=document.querySelector('#auth-storage-notice');
@@ -170,7 +208,17 @@
     }
     await refreshInFlight;
   }
-  async function requireMembership() {
+  function requireMembership() {
+    if (verifiedContext && verifiedContext.generation === generation && session && tokenUser(session) === verifiedContext.identity.id) {
+      return Promise.resolve({ ...verifiedContext.identity });
+    }
+    if (membershipFlight?.generation === generation) return membershipFlight.promise;
+    const flight = { generation, promise: null };
+    flight.promise = verifyMembership().finally(() => { if (membershipFlight === flight) membershipFlight = null; });
+    membershipFlight = flight;
+    return flight.promise;
+  }
+  async function verifyMembership() {
     if (!session || !validConfig()) throw rejected('請先使用 Google 登入。');
     const attempt = generation;
     try {
@@ -241,7 +289,10 @@
   }
   function lock(text = '', { forget = true, preserveDraft = !forget } = {}) {
     generation++; app.hidden = true; app.inert = true; screen.hidden = false;
+    if (restoring) restoring.hidden = true;
     refreshInFlight=null;
+    membershipFlight=null; verifiedContext=null; initialLoading=false; busy=false;
+    clearSuccessNotice(); dirty=false; changeVersion=0; reminderState='idle'; reminderError='';
     window.TripPlanner?.lock({preserveDraft});
     if ((forget || !preserveDraft) && member) { try { sessionStorage.removeItem(revisionKey(member)); } catch {} }
     if (forget) remember(null);
@@ -250,53 +301,82 @@
     const email = document.querySelector('#account-email');
     if (email) { email.textContent = ''; email.classList.remove('actor-owen', 'actor-winnie'); }
     renderLogin([text,storageNotice].filter(Boolean).join(' '));
+    renderSaveReminder();
   }
-  async function sharedSnapshot() {
-    await requireMembership();
+  async function sharedSnapshot({ verified = false } = {}) {
+    if (!verified) await requireMembership();
     const rows = await request(`/rest/v1/shared_trip_snapshots?scope=eq.${scope}&select=trips,updated_at,updated_by`);
     if (!Array.isArray(rows) || rows.length > 1) throw new Error('共享行程格式異常，請通知歐文。');
     return rows[0] || null;
   }
   async function openPrivateSpace() {
     const attempt = generation;
-    await requireMembership(); const restored = await window.TripPlanner.unlock();
+    const identity = await requireMembership();
+    if (attempt !== generation || !session) throw rejected('已登出，請重新登入。');
+    const context = { generation: attempt, identity };
+    verifiedContext = context;
+    let restored;
+    try { restored = await window.TripPlanner.unlock(); }
+    finally { if (verifiedContext === context) verifiedContext = null; }
+    if (attempt !== generation || !session) throw rejected('已登出，請重新登入。');
     try { revision = sessionStorage.getItem(revisionKey(member)); } catch { revision = null; }
-    const snapshot = await sharedSnapshot();
+    const initialTrips = window.TripPlanner.getTrips();
+    const initialVersion = changeVersion;
+    dirty = Boolean(restored?.restoredDraft) && initialTrips.some(trip => trip.days.some(day => day.length));
+    reminderState = dirty ? 'dirty' : 'idle';
+    initialLoading = true;
+    const email = document.querySelector('#account-email');
+    email.textContent = `${member.displayName} · ${member.email}`;
+    email.classList.remove('actor-owen', 'actor-winnie'); email.classList.add(`actor-${member.actor}`);
+    if (restoring) restoring.hidden = true;
+    screen.hidden = true; app.hidden = false; app.inert = false;
+    message('正在載入共同手帳；可以先編輯本頁，載入後不會覆蓋你的新修改。', true);
+    renderSaveReminder();
+    const snapshot = await sharedSnapshot({ verified: true });
     if (attempt !== generation || !session) throw rejected('已登出，請重新登入。');
     let keptDraft = false;
     if (snapshot) {
       const validated = window.TripPlanner.validateTrips(snapshot.trips);
-      const local = window.TripPlanner.getTrips();
-      keptDraft = Boolean(restored?.restoredDraft) && JSON.stringify(local) !== JSON.stringify(validated);
+      const sameBaseline = JSON.stringify(initialTrips) === JSON.stringify(validated);
+      keptDraft = changeVersion !== initialVersion || (Boolean(restored?.restoredDraft) && !sameBaseline);
       if (!keptDraft) {
-        window.TripPlanner.replaceTrips(snapshot.trips);
+        window.TripPlanner.replaceTrips(snapshot.trips, { silent: true });
         setRevision(snapshot.updated_at);
-      }
+      } else if (sameBaseline) setRevision(snapshot.updated_at);
+      dirty = keptDraft && JSON.stringify(window.TripPlanner.getTrips()) !== JSON.stringify(validated);
+    } else {
+      setRevision(null);
+      dirty = window.TripPlanner.getTrips().some(trip => trip.days.some(day => day.length));
+      keptDraft = dirty;
     }
-    const email = document.querySelector('#account-email');
-    email.textContent = `${member.displayName} · ${member.email}`;
-    email.classList.remove('actor-owen', 'actor-winnie'); email.classList.add(`actor-${member.actor}`);
-    screen.hidden = true; app.hidden = false; app.inert = false;
+    keptDraft = dirty;
+    initialLoading = false; reminderState = dirty ? 'dirty' : 'idle'; renderSaveReminder();
     message(keptDraft ? '已保留這個頁面的未同步草稿。若另一位有新修改，請先匯出備份，再載入共同手帳。'
-      : snapshot ? '已載入我們的共同行程。修改後請儲存到雲端。' : '先安排想去的地方，再儲存到我們的共同行程。', true);
+      : snapshot ? '已載入我們的共同行程。修改後請儲存。' : '先安排想去的地方，再儲存到我們的共同行程。', true);
     if (storageNotice) message(`${document.querySelector('#sync-status').textContent} ${storageNotice}`,true);
   }
   async function perform(task) {
-    if (busy || !session || app.hidden) return;
+    if (busy || initialLoading || !session || app.hidden) return;
     busy = true;
-    document.querySelectorAll('#cloud-save, #cloud-load').forEach(b => b.disabled = true);
+    renderSaveReminder();
     const attempt = generation;
     try { await task(attempt); }
     catch (error) {
       if (error.denied && attempt === generation) lock(error.message);
-      else if (attempt === generation) message(error.message, true);
+      else if (attempt === generation) {
+        reminderState='error'; reminderError=error.message;
+        message(error.message, true); renderSaveReminder();
+      }
     } finally {
-      busy = false; document.querySelectorAll('#cloud-save, #cloud-load').forEach(b => b.disabled = false);
+      if (attempt === generation) { busy = false; renderSaveReminder(); }
     }
   }
-  document.querySelector('#cloud-save').addEventListener('click', () => perform(async attempt => {
+  function save() { return perform(async attempt => {
+    clearSuccessNotice(); reminderState='saving'; reminderError=''; renderSaveReminder();
     message('正在儲存我們的行程…', true); await requireMembership();
+    if (attempt !== generation || !session) return;
     const trips = window.TripPlanner.getTrips(); window.TripPlanner.validateTrips(trips);
+    const submittedVersion = changeVersion;
     const rows = revision
       ? await request(`/rest/v1/shared_trip_snapshots?scope=eq.${scope}&updated_at=eq.${encodeURIComponent(revision)}`, {
         method: 'PATCH', body: { trips }, headers: { Prefer: 'return=representation' }
@@ -307,26 +387,46 @@
     if (attempt !== generation || !session) return;
     if (!Array.isArray(rows) || rows.length !== 1) throw new Error('另一位已更新行程。請先匯出備份，再載入共同手帳，合併修改後重新儲存。');
     setRevision(rows[0].updated_at);
-    message('共同行程已儲存。另一位載入共同手帳即可看到修改。', true);
-  }));
+    dirty = changeVersion !== submittedVersion;
+    reminderState = dirty ? 'dirty' : 'saved';
+    const unsubmittedText = Boolean(document.querySelector('#activity-text')?.value.trim());
+    message(dirty ? '本次送出的行程已儲存，但還有尚未同步的新修改，請再次儲存。'
+      : `共同行程已儲存。另一位載入共同手帳即可看到修改。${unsubmittedText ? ' 輸入文字請先新增才會保存。' : ''}`, true);
+    renderSaveReminder();
+    if (!dirty) successTimer = setTimeout(() => {
+      if (attempt === generation && !dirty && reminderState === 'saved') { reminderState='idle'; renderSaveReminder(); }
+    }, unsubmittedText ? 5000 : 3000);
+  }); }
+  document.querySelector('#cloud-save').addEventListener('click', save);
+  document.querySelector('#save-now')?.addEventListener('click', save);
   document.querySelector('#cloud-load').addEventListener('click', () => perform(async attempt => {
     if (!confirm('載入共同手帳會取代此頁面尚未儲存的修改。建議先匯出備份，確定繼續？')) return;
+    const loadingVersion = changeVersion;
     const snapshot = await sharedSnapshot(); if (attempt !== generation || !session) return;
+    if (changeVersion !== loadingVersion) throw new Error('載入期間你又修改了行程，已保留新修改，沒有覆蓋。請先儲存或匯出備份，再重新載入。');
     if (!snapshot) throw new Error('還沒有共享行程，請先儲存一次。');
-    window.TripPlanner.validateTrips(snapshot.trips); window.TripPlanner.replaceTrips(snapshot.trips);
+    window.TripPlanner.validateTrips(snapshot.trips); window.TripPlanner.replaceTrips(snapshot.trips, { silent: true });
+    clearSuccessNotice(); dirty=false; reminderState='idle'; reminderError='';
     setRevision(snapshot.updated_at); message('已載入最新的共同行程。', true);
+    renderSaveReminder();
   }));
   document.querySelector('#sign-out').addEventListener('click', async () => {
-    if (!session || !confirm('確定登出？尚未儲存到雲端的修改將清除，請先儲存或匯出備份。')) return;
+    if (!session || !confirm('確定登出？尚未儲存的修改將清除，請先儲存或匯出備份。')) return;
     const token = session.access_token; lock('已登出。再次使用時，請以 Google 登入。');
     try { await request('/auth/v1/logout?scope=local', { method: 'POST', auth: false, headers: { Authorization: `Bearer ${token}` } }); }
     catch { /* Local logout is immediate, including when the network is unavailable. */ }
   });
   window.addEventListener('trip-planner-changed', () => {
-    if (member && session && !app.hidden && !busy) message('有尚未同步的修改，完成後請儲存到雲端。', true);
+    if (member && session && !app.hidden) {
+      changeVersion++; dirty=true; clearSuccessNotice();
+      if (reminderState !== 'saving') reminderState='dirty';
+      if (!busy) message('有尚未同步的修改，完成後請儲存。', true);
+      renderSaveReminder();
+    }
   });
   async function connect() {
     const attempt=generation;
+    showRestoring();
     message('正在確認登入狀態…');
     try { await openPrivateSpace(); }
     catch(error) { if(attempt===generation)lock(error.message,{forget:Boolean(error.denied)}); }
@@ -348,6 +448,9 @@
     if (callback) history.replaceState(null, '', location.pathname + location.search);
     renderLogin('正在確認登入狀態…'); app.hidden = true; app.inert = true;
     try {
+      // Choose the neutral restoring shell before waiting for another tab's
+      // refresh lock. Cached credentials alone never reveal private content.
+      if (callback || readStoredSession({ migrate: true })) showRestoring();
       if (callback && hash.has('access_token')) {
         remember(validSession({ access_token:hash.get('access_token'),refresh_token:hash.get('refresh_token'),expires_at:Date.now()/1000+Number(hash.get('expires_in') || 3600) }));
       } else if (callback) { lock('Google 登入未完成，請再試一次。');return; }

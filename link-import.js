@@ -22,11 +22,13 @@
     $('#draft-source').removeAttribute('href');$('#draft-source').textContent='';$('#draft-evidence').value='';$('#draft-pending').textContent='';$('#draft-add').disabled=true;$('#link-fetch').disabled=false;status('');
   }
   function update() {
+    const selectedStart=$('#draft-start').value;
+    $('#draft-period').value=selectedStart ? (selectedStart < '12:00' ? 'morning' : 'afternoon') : '';
     const missing=[];
     for (const field of ['place','date','period','start','end']) if (!$(`#draft-${field}`).value.trim()) missing.push(labels[field==='start'?'startTime':field==='end'?'endTime':field]);
     const start=$('#draft-start').value,end=$('#draft-end').value;
     const times= /^([01]\d|2[0-3]):[0-5]\d$/.test(start)&&/^([01]\d|2[0-3]):[0-5]\d$/.test(end)&&end>start;
-    $('#draft-pending').textContent=missing.length ? `待確認：${missing.join('、')}。` : !times ? '待確認：結束時間須晚於開始時間，跨日活動請分開填寫。' : !$('#draft-confirm').checked ? '請確認日期、時段及起訖時間；草稿尚未加入行程。' : '已確認，可加入行程；加入後請儲存到雲端。';
+    $('#draft-pending').textContent=missing.length ? `待確認：${missing.join('、')}。` : !times ? '待確認：結束時間須晚於開始時間，跨日活動請分開填寫。' : !$('#draft-confirm').checked ? '請確認日期、時段及起訖時間；草稿尚未加入行程。' : '已確認，可加入行程；加入後請按儲存。';
     $('#draft-add').disabled=missing.length>0||!times||!$('#draft-confirm').checked||!sourceUrl;
   }
   function showDraft(url,data) {
@@ -64,7 +66,7 @@
     event.preventDefault();if(pending||$('#private-app').hidden||$('#link-draft-form').hidden)return;
     try {
       window.TripPlanner.addImportedDraft({sourceUrl,date:$('#draft-date').value,period:$('#draft-period').value,startTime:$('#draft-start').value,endTime:$('#draft-end').value,place:$('#draft-place').value.trim(),category:$('#draft-category').value,shopping:$('#draft-shopping').value,notes:$('#draft-notes').value,confirmed:$('#draft-confirm').checked});
-      clear();status('草稿已加入行程；請儲存到雲端與另一位共享。');
+      clear();status('草稿已加入行程；請按儲存，讓另一位載入。');
     }catch(error){status(error.message);}
   });
   $('#draft-cancel').addEventListener('click',clear);

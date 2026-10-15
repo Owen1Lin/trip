@@ -11,18 +11,22 @@
   let editorOpener = null;
   let resumableDraft = false;
   let pendingCloseEvents = 0;
+  let currentSyncState = null;
 
   function unlocked() { return !app.hidden && !app.inert; }
   function updateSyncIndicator(forceNeutral = false) {
     if (!syncIndicator) return;
-    const source = !forceNeutral && unlocked() ? syncStatus?.textContent.trim() || '' : '';
+    const sync = !forceNeutral && unlocked() ? window.TripSync?.getState?.() || currentSyncState : null;
+    const source = !forceNeutral && unlocked() ? sync?.message || syncStatus?.textContent.trim() || '' : '';
     let state = 'neutral', label = '共同手帳';
-    if (/尚未同步|未同步草稿/.test(source)) {
+    if (sync?.status === 'saving') {
+      state = 'saving'; label = '儲存中';
+    } else if (sync?.dirty || /尚未同步|未同步草稿/.test(source)) {
       state = 'dirty'; label = '有未同步變更';
     } else if (source.includes('正在儲存')) {
       state = 'saving'; label = '儲存中';
     } else if (source.includes('共同行程已儲存')) {
-      state = 'saved'; label = '已儲存到雲端';
+      state = 'saved'; label = '已儲存';
     } else if (source.includes('已載入最新')) {
       state = 'loaded'; label = '已載入雲端';
     }
@@ -91,7 +95,8 @@
     document.body.classList.add('mobile-editor-open');
     document.documentElement.dataset.mobileEditor = 'open';
     updateNavigation();
-    const focusTarget = editor.querySelector('#activity-place') || editor.querySelector('input, select, textarea, button');
+    const focusTarget = [...editor.querySelectorAll('#activity-text, #activity-place, input, select, textarea')]
+      .find(control => !control.disabled && !control.closest('[hidden], [inert]') && control.getClientRects().length);
     focusTarget?.focus({ preventScroll: true });
     return true;
   }
@@ -141,6 +146,7 @@
     updateSyncIndicator(true);
   }
   window.addEventListener('trip-planner-locked', reset);
+  window.addEventListener('trip-sync-state', event => { currentSyncState = event.detail; updateSyncIndicator(); });
   window.addEventListener('trip:activity-added', () => {
     closeEditor({ restoreFocus: false });
     showView('itinerary', { focus: 'day' });
