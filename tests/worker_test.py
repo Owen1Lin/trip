@@ -13,6 +13,13 @@ import import_worker as worker
 import public_proxy as proxy
 
 class WorkerTests(unittest.TestCase):
+    def test_only_official_model_hosts_get_larger_transport_limit(self):
+        for host in ['huggingface.co','HUGGINGFACE.CO.','cdn-lfs.huggingface.co','cas-bridge.xethub.hf.co']:
+            with self.subTest(host=host):self.assertEqual(proxy.transfer_limit(host),128*1024*1024)
+        for host in ['example.com','youtube.com','evil-huggingface.co','huggingface.co.evil.example','hf.co.evil.example','evil-hf.co']:
+            with self.subTest(host=host):self.assertEqual(proxy.transfer_limit(host),55*1024*1024)
+        self.assertEqual(worker.MAX_BYTES,50*1024*1024,'larger model transport cannot increase source-media download limit')
+
     def test_public_dns_is_fail_closed(self):
         def resolver(addresses):
             return lambda *args, **kwargs: [(None, None, None, '', (address, 443)) for address in addresses]

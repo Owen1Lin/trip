@@ -1,4 +1,4 @@
-import {verifyWorkerToken} from './worker-auth.mjs';
+import {verifyWorkerToken,WorkerAuthError} from './worker-auth.mjs';
 import {validateRichUrl} from '../link-import/rich-core.mjs';
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PUBLIC_FIELDS='id,source_url,model,status,phase,error,attempts,created_at,updated_at';
@@ -15,7 +15,7 @@ Deno.serve(async(req)=>{
  let input;try{input=await boundedJson(req);}catch{return send(400,{error:'任務資料格式錯誤或過大。'});}
  const rpc=async(name:string,body:unknown,key:string,auth:string)=>{const response=await fetch(`${supabase}/rest/v1/rpc/${name}`,{method:'POST',redirect:'error',headers:{apikey:key,Authorization:auth,'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(10000)});if(!response.ok)throw Error('任務操作未成功；請確認服務可用、任務狀態與重試上限。');return await boundedJson(response);};
  if(['claim','complete','heartbeat','progress'].includes(input?.action)){
-   try{await verifyWorkerToken(token);}catch{return send(403,{error:'背景工作身分驗證失敗。'});}
+   try{await verifyWorkerToken(token);}catch(error){return send(403,{error:'背景工作身分驗證失敗。',code:error instanceof WorkerAuthError?error.code:'OIDC_UNEXPECTED'});}
    const service=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');if(!service)return send(503,{error:'背景任務服務未設定。'});
    try{
     if(input.action==='heartbeat')return send(200,{ok:await rpc('trip_import_heartbeat',{},service,`Bearer ${service}`)});

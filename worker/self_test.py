@@ -4,11 +4,13 @@ No member tasks are created. Public-platform refusal is an observed result,
 never a successful extraction. This mode runs only in the trusted workflow.
 """
 import json
+import base64
 import os
 import re
 import signal
 import subprocess
 import sys
+import urllib.error
 from pathlib import Path
 
 from import_worker import (AUDIENCE, MAX_JOB_SECONDS, extract_article, extract_video,
@@ -39,7 +41,30 @@ def synthetic_pipeline(url, directory, proxy, frames, progress):
 def run():
     if os.environ.get('GITHUB_ACTIONS') != 'true':
         raise RuntimeError('Self test runs only on the trusted Actions runner')
-    heartbeat = request_json(AUDIENCE, {'action': 'heartbeat'}, github_identity())
+    identity = github_identity()
+    print('PASS: short-lived GitHub OIDC token issued.', flush=True)
+    # Only public workflow identity comparisons, never the token or raw claims.
+    encoded = identity.split('.')[1]
+    claims = json.loads(base64.urlsafe_b64decode(encoded + '=' * (-len(encoded) % 4)))
+    expected = {'iss': 'https://token.actions.githubusercontent.com', 'aud': AUDIENCE,
+                'repository': 'Owen1Lin/trip', 'repository_owner': 'Owen1Lin',
+                'ref': 'refs/heads/main',
+                'workflow_ref': 'Owen1Lin/trip/.github/workflows/import-worker.yml@refs/heads/main',
+                'sub': 'repo:Owen1Lin/trip:ref:refs/heads/main'}
+    print(json.dumps({'identityChecks': {key: claims.get(key) == value for key, value in expected.items()},
+                      'numericTimes': {key: isinstance(claims.get(key), (int, float)) for key in ['exp', 'iat', 'nbf']}}), flush=True)
+    try:
+        heartbeat = request_json(AUDIENCE, {'action': 'heartbeat'}, identity)
+    except urllib.error.HTTPError as error:
+        # Emit only a bounded server diagnostic code, never tokens or bodies.
+        try:
+            body = json.loads(error.read(2000))
+            code = body.get('code', 'unavailable')
+        except (ValueError, AttributeError):
+            code = 'unavailable'
+        if not isinstance(code, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,80}', code):
+            code = 'unavailable'
+        raise RuntimeError(f'Worker heartbeat HTTP {error.code}; diagnostic={code}') from None
     if heartbeat.get('ok') is not True:
         raise RuntimeError('Real OIDC worker authentication failed')
     print('PASS: real short-lived GitHub OIDC authenticated; no member data used.')

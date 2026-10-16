@@ -13,6 +13,15 @@ import time
 from urllib.parse import urlsplit
 
 
+def transfer_limit(host):
+    # The fixed tiny speech model is larger than the media input limit.
+    # Only its official model/CDN hosts receive the larger transport bound;
+    # source media still has the independent 50 MiB extractor limit.
+    hostname = host.lower().rstrip('.')
+    model_host = hostname == 'huggingface.co' or hostname.endswith(('.huggingface.co', '.hf.co'))
+    return (128 if model_host else 55) * 1024 * 1024
+
+
 def public_addresses(host, resolver=socket.getaddrinfo):
     if not isinstance(host, str) or len(host) > 253 or any(c in host for c in '/\\@\r\n\x00'):
         raise ValueError('Invalid public hostname')
@@ -65,6 +74,7 @@ class _Handler(socketserver.BaseRequestHandler):
             self.request.setblocking(False)
             remote.setblocking(False)
             transferred = 0
+            limit = transfer_limit(host)
             deadline = time.monotonic() + 120
             while time.monotonic() < deadline:
                 readable, _, _ = select.select([self.request, remote], [], [], 1)
@@ -73,7 +83,7 @@ class _Handler(socketserver.BaseRequestHandler):
                     if not data:
                         return
                     transferred += len(data)
-                    if transferred > 55 * 1024 * 1024:
+                    if transferred > limit:
                         return
                     destination = remote if source is self.request else self.request
                     destination.setblocking(True)
