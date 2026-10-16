@@ -33,6 +33,26 @@ class ExtractionError(Exception):
     pass
 
 
+def failure_message(error):
+    """Actionable categories without reflecting remote bodies or signed URLs."""
+    if isinstance(error, ExtractionError):
+        return str(error)[:500]
+    if isinstance(error, urllib.error.HTTPError):
+        return f'公開來源回應 HTTP {error.code}；未取得摘要，請改貼文字、字幕或圖片。'
+    if isinstance(error, (TimeoutError, urllib.error.URLError)):
+        return '來源連線失敗或逾時；原始輸入仍保留，可重試或改貼文字、字幕或圖片。'
+    if isinstance(error, ValueError) and str(error) in (
+        'Invalid public hostname', 'Private hostname is not allowed',
+        'Literal IP destinations are not allowed', 'Destination resolves to a non-public address',
+        'Invalid URL', 'Only public HTTPS URLs without credentials are supported',
+    ):
+        return '來源網址或重新導向未通過公開 HTTPS 安全檢查；請提供最終 HTTPS 網址或貼上原文。'
+    detail = str(error).lower()
+    if 'sign in' in detail or 'log in' in detail or 'not a bot' in detail:
+        return '來源要求登入或拒絕自動讀取；未取得摘要，請改貼字幕、文字或截圖。'
+    return '公開來源被限制或影音處理失敗；未取得摘要，請貼字幕、文字或圖片，或重試。'
+
+
 class QuietLogger:
     def debug(self, *args, **kwargs):
         pass
@@ -308,10 +328,8 @@ def main():
         def progress(phase):
             request_json(AUDIENCE, {'action': 'progress', 'jobId': job['id'], 'leaseToken': job['leaseToken'], 'phase': phase}, github_identity())
         result = process_job(job, progress=progress)
-    except ExtractionError as exc:
-        error = str(exc)[:500]
-    except Exception:
-        error = '公開來源被限制或影音處理失敗；未取得摘要，請貼字幕、文字或圖片，或重試。'
+    except Exception as exc:
+        error = failure_message(exc)
     finally:
         signal.alarm(0)
         Path(args.job_file).unlink(missing_ok=True)

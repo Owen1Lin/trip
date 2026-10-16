@@ -76,7 +76,8 @@ def run():
     try:
         result = process_job({'id': '00000000-0000-4000-8000-000000000001', 'url': 'https://example.com/', 'options': {}}, extractor=synthetic_pipeline)
         print('PASS: real CPU faster-whisper and Tesseract ran on fabricated voice/menu.', json.dumps(result))
-        cases = [('official_article', 'https://www.ichiran.com/shop/kyushu/tenjin/', extract_article),
+        cases = [('official_article', 'https://ichiran.com/shop/kyushu/tenjin/', extract_article),
+                 ('unsafe_redirect_refused', 'https://www.ichiran.com/shop/kyushu/tenjin/', extract_article),
                  ('youtube_public_video', 'https://www.youtube.com/watch?v=jNQXAC9IVRw', extract_video)]
         for label, url, extractor in cases:
             try:

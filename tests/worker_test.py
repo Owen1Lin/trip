@@ -13,6 +13,20 @@ import import_worker as worker
 import public_proxy as proxy
 
 class WorkerTests(unittest.TestCase):
+    def test_failure_categories_do_not_echo_remote_secrets(self):
+        failures = [
+            (worker.urllib.error.HTTPError('https://example.com/?token=PRIVATE',403,'SECRET body',{},None),'HTTP 403'),
+            (worker.urllib.error.URLError('SECRET connection info'),'連線失敗或逾時'),
+            (ValueError('Only public HTTPS URLs without credentials are supported'),'安全檢查'),
+            (ValueError('SECRET model result'),'影音處理失敗'),
+            (RuntimeError('Sign in to confirm you are not a bot. Cookie SECRET'),'要求登入'),
+            (RuntimeError('SECRET request body'),'影音處理失敗'),
+        ]
+        for error,expected in failures:
+            with self.subTest(expected=expected):
+                message=worker.failure_message(error);self.assertIn(expected,message);self.assertNotIn('SECRET',message);self.assertNotIn('PRIVATE',message)
+        self.assertEqual(worker.failure_message(worker.ExtractionError('影片超過十分鐘')),'影片超過十分鐘')
+
     def test_only_official_model_hosts_get_larger_transport_limit(self):
         for host in ['huggingface.co','HUGGINGFACE.CO.','cdn-lfs.huggingface.co','cas-bridge.xethub.hf.co']:
             with self.subTest(host=host):self.assertEqual(proxy.transfer_limit(host),128*1024*1024)
