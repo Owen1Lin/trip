@@ -110,9 +110,12 @@ class WorkerTests(unittest.TestCase):
         class Opener:
             def __init__(self,html):self.html=html
             def open(self,*args,**kwargs):return Response(self.html)
-        with patch.dict(sys.modules,{'trafilatura':types.SimpleNamespace(extract=lambda *args,**kwargs:'虛構甲店 菜單300円')}), patch.object(worker,'validate_url',side_effect=lambda value,*args:value), patch.object(worker,'public_opener',return_value=Opener('<title>虛構公開食記</title><article>虛構甲店</article>')):
+        def extract_body(*args,**kwargs):
+            self.assertTrue(kwargs['include_tables']);self.assertTrue(kwargs['favor_recall'])
+            return '虛構甲店 菜單300円'
+        with patch.dict(sys.modules,{'trafilatura':types.SimpleNamespace(extract=extract_body)}), patch.object(worker,'validate_url',side_effect=lambda value,*args:value), patch.object(worker,'public_opener',return_value=Opener('<title>虛構公開食記</title><article>虛構甲店</article>')):
             result=worker.extract_article('https://example.com/article','/tmp/synthetic','http://127.0.0.1:1234')
-            self.assertEqual(result['text'],'虛構甲店 菜單300円');self.assertEqual(result['type'],'webpage')
+            self.assertEqual(result['text'],'虛構公開食記\n虛構甲店 菜單300円');self.assertEqual(result['title'],'虛構公開食記');self.assertEqual(result['type'],'webpage');self.assertTrue(any('未收錄' in warning for warning in result['warnings']))
         with patch.dict(sys.modules,{'trafilatura':types.SimpleNamespace(extract=lambda *args,**kwargs:'Log in to Threads to continue reading this public post.')}), patch.object(worker,'validate_url',side_effect=lambda value,*args:value), patch.object(worker,'public_opener',return_value=Opener('<title>Threads</title><article>Log in to Threads to continue.</article>')), self.assertRaises(worker.ExtractionError):
             worker.extract_article('https://example.com/article','/tmp/synthetic','http://127.0.0.1:1234')
 

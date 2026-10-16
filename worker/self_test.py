@@ -82,7 +82,10 @@ def run():
         for label, url, extractor in cases:
             try:
                 data = process_job({'id': '00000000-0000-4000-8000-000000000002', 'url': url, 'options': {}}, extractor=extractor)
-                print(json.dumps({'publicSource': label, 'status': 'read', 'type': data.get('type'), 'evidenceChars': len(data.get('text', ''))}))
+                observations = {'publicSource': label, 'status': 'read', 'type': data.get('type'), 'evidenceChars': len(data.get('text', ''))}
+                if label == 'official_article':
+                    observations['retainedPageDetails'] = {key: word in data.get('text', '') for key, word in [('branch', '天神'), ('hours', '11:00'), ('menuCurrency', '円')]}
+                print(json.dumps(observations))
             except Exception as error:
                 # No response body or signed downstream URL enters public logs.
                 reason = re.sub(r'https?://\S+', '[source URL]', str(error).splitlines()[0])[:400]

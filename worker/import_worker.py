@@ -249,7 +249,9 @@ def extract_article(url, directory, proxy, include_frames=False, progress=lambda
             raise ExtractionError('來源不是可讀公開文章。')
         html = _read_bounded(response, 1024 * 1024).decode(response.headers.get_content_charset() or 'utf-8', errors='replace')
         final_url = response.url
-    content = trafilatura.extract(html, include_comments=False, include_tables=True, include_links=False, favor_precision=True) or ''
+    # Restaurant pages often put branch details in short tables alongside a
+    # generic introduction. Precision-only extraction discarded those details.
+    content = trafilatura.extract(html, include_comments=False, include_tables=True, include_links=False, favor_recall=True) or ''
     if not content.strip():
         raise ExtractionError('來源沒有可讀正文，可能需登入或禁止公開擷取；請貼上原文或圖片。')
     title_match = re.search(r'<title\b[^>]*>([^<]*)</title>', html, re.I)
@@ -258,6 +260,9 @@ def extract_article(url, directory, proxy, include_frames=False, progress=lambda
     if re.fullmatch(r'\s*(?:Facebook|Instagram|Threads|Log in|Login|Sign in|登入)(?:\s*[-|].*)?\s*', title, re.I) or re.search(r'log in to (?:facebook|instagram|threads)|sign in to continue|登入以繼續|you must log in to continue', content[:2000], re.I):
         raise ExtractionError('平台只提供登入頁，未取得公開文章；請改貼文字、字幕或圖片。')
     warnings = ['來源是否為官方尚未核實；沒有補查其他官網或評論。']
+    if title and title not in content:
+        content = title + '\n' + content
+    warnings.append('正文由工具擷取，頁面版型可能使部分菜單或分店細節未收錄；請對照原文，缺項保持待確認。')
     if len(content) > MAX_TEXT:
         content = content[:MAX_TEXT]
         warnings.append('正文超過 12000 字，只保留前段；不是完整文章。')
