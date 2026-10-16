@@ -15,7 +15,7 @@ export async function verifyWorkerToken(token,{fetcher=fetch,now=Date.now(),jwks
   try{header=JSON.parse(new TextDecoder().decode(decode(parts[0])));claims=JSON.parse(new TextDecoder().decode(decode(parts[1])));}catch{deny('OIDC_FORMAT');}
   if(!header||!claims||typeof header!=='object'||typeof claims!=='object')deny('OIDC_FORMAT');
   if(header.alg!=='RS256'||typeof header.kid!=='string'||header.jku||header.jwk||header.x5u||header.crit)deny('OIDC_HEADER');
-  const expected={iss:ISSUER,aud:AUDIENCE,repository:'Owen1Lin/trip',repository_owner:'Owen1Lin',ref:'refs/heads/main',workflow_ref:'Owen1Lin/trip/.github/workflows/import-worker.yml@refs/heads/main',sub:'repo:Owen1Lin/trip:ref:refs/heads/main'};
+  const expected={iss:ISSUER,aud:AUDIENCE,repository:'Owen1Lin/trip',repository_owner:'Owen1Lin',ref:'refs/heads/main',workflow_ref:'Owen1Lin/trip/.github/workflows/import-worker.yml@refs/heads/main',sub:'repo:Owen1Lin@335954076/trip@1417655111:ref:refs/heads/main',repository_id:'1417655111',repository_owner_id:'335954076'};
   for(const [key,value] of Object.entries(expected))if(claims[key]!==value)deny(`OIDC_CLAIM_${key.toUpperCase()}`);
   if(!['schedule','workflow_dispatch','push'].includes(claims.event_name))deny('OIDC_CLAIM_EVENT_NAME');
   const seconds=now/1000;

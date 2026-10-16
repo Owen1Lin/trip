@@ -20,6 +20,24 @@ class WorkerTests(unittest.TestCase):
             with self.subTest(host=host):self.assertEqual(proxy.transfer_limit(host),55*1024*1024)
         self.assertEqual(worker.MAX_BYTES,50*1024*1024,'larger model transport cannot increase source-media download limit')
 
+    def test_tunnel_enforces_selected_host_limit_before_forwarding(self):
+        class Payload:
+            def __init__(self,size):self.size=size
+            def __len__(self):return self.size
+        class Socket:
+            def __init__(self,chunks=()):self.chunks=iter(chunks);self.sent=[];self.closed=False
+            def recv(self,*args):return next(self.chunks,b'')
+            def sendall(self,data):self.sent.append(data)
+            def settimeout(self,*args):pass
+            def setblocking(self,*args):pass
+            def close(self):self.closed=True
+        for host,size,forwarded in [('example.com',55*1024*1024+1,False),('cdn-lfs.huggingface.co',55*1024*1024+1,True),('huggingface.co',128*1024*1024+1,False),('huggingface.co.evil.example',55*1024*1024+1,False)]:
+            with self.subTest(host=host,size=size):
+                request=Socket([f'CONNECT {host}:443 HTTP/1.1\r\nHost: {host}\r\n\r\n'.encode(),Payload(size),b'']);remote=Socket();handler=proxy._Handler.__new__(proxy._Handler);handler.request=request
+                with patch.object(proxy,'public_addresses',return_value=['8.8.8.8']), patch.object(proxy.socket,'create_connection',return_value=remote) as connect, patch.object(proxy.select,'select',return_value=([request],[],[])):
+                    handler.handle()
+                self.assertEqual(bool(remote.sent),forwarded,'over-limit bytes must not reach destination');self.assertTrue(remote.closed);self.assertEqual(connect.call_args.args[0],('8.8.8.8',443),'gateway connects to pinned public DNS IP')
+
     def test_public_dns_is_fail_closed(self):
         def resolver(addresses):
             return lambda *args, **kwargs: [(None, None, None, '', (address, 443)) for address in addresses]

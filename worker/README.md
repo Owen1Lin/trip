@@ -9,9 +9,13 @@ and [OIDC](https://docs.github.com/en/actions/reference/security/oidc).
 There is no new paid host, GPU, or long-lived worker secret. The workflow obtains
 a short-lived GitHub OIDC token; the Edge function verifies its RSA signature,
 fixed issuer/audience, repository/owner, main ref, workflow, subject and allowed
-event. Pull-request tokens are rejected. Only then may the function use its
+event. This repository enables GitHub's immutable subject; the pinned subject
+includes owner ID `335954076` and repository ID `1417655111`, as confirmed by
+the read-only repository OIDC settings API. The verifier never accepts arbitrary
+subject prefixes. Pull-request tokens are rejected. Only then may the function use its
 server-side Supabase service credential for queue RPCs. User JWTs and model keys
 never enter the workflow. Members cannot call worker RPCs.
+See GitHub's [immutable subject announcement](https://github.blog/changelog/2026-04-23-immutable-subject-claims-for-github-actions-oidc-tokens/).
 
 ## Processing
 
@@ -42,6 +46,9 @@ routed to the refusing gateway. `NO_PROXY` is removed only inside this isolated
 runner's gateway scope and restored afterward. An already configured upstream
 proxy makes processing fail closed; this worker must not bypass a managed
 executor's network policy. FFmpeg reads local files with `file,pipe` protocols.
+Tunnels are capped at 55 MiB, or 128 MiB for official Hugging Face model/CDN
+hosts to fetch the fixed tiny speech model; source media remains capped at
+50 MiB independently. Host suffix lookalikes receive the ordinary bound.
 
 ## Deployment
 
@@ -72,7 +79,10 @@ source is reported as unavailable, not as a successful extraction.
 ## Versions and licenses
 
 Pinned Python tools: yt-dlp 2026.8.19 (Unlicense), faster-whisper 1.2.1 (MIT),
-Trafilatura 2.3.1 (Apache-2.0), Pillow 11.3.0 (HPND). FFmpeg and native Tesseract
+PyAV 18.1.0 (BSD-3-Clause), Trafilatura 2.3.1 (Apache-2.0), Pillow 11.3.0 (HPND).
+PyAV is pinned because version 19 removed `metadata_errors`, which the released
+faster-whisper 1.2.1 still uses ([upstream issue](https://github.com/SYSTRAN/faster-whisper/issues/1589)).
+FFmpeg and native Tesseract
 use the runner's Ubuntu packages; their exact versions are recorded by the
 workflow setup. FFmpeg build licensing depends on the Ubuntu configuration.
 Tesseract is Apache-2.0. No PaddleOCR/GPU stack was installed: browser Tesseract

@@ -42,7 +42,7 @@ jobs:
           python -m pip install --disable-pip-version-check -r worker/requirements.txt
           sudo apt-get update -qq
           sudo apt-get install -y -qq ffmpeg espeak tesseract-ocr tesseract-ocr-jpn tesseract-ocr-chi-tra
-          python -c "from importlib.metadata import version; print({name: version(name) for name in ['yt-dlp','faster-whisper','trafilatura','Pillow']})"
+          python -c "from importlib.metadata import version; print({name: version(name) for name in ['yt-dlp','faster-whisper','av','trafilatura','Pillow']})"
           ffmpeg -version | head -1
           tesseract --version 2>&1 | head -1
       - name: Verify real OIDC, CPU transcription, OCR, and fixed public sources

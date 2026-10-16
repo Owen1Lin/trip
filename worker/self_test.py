@@ -50,7 +50,8 @@ def run():
                 'repository': 'Owen1Lin/trip', 'repository_owner': 'Owen1Lin',
                 'ref': 'refs/heads/main',
                 'workflow_ref': 'Owen1Lin/trip/.github/workflows/import-worker.yml@refs/heads/main',
-                'sub': 'repo:Owen1Lin/trip:ref:refs/heads/main'}
+                'sub': 'repo:Owen1Lin@335954076/trip@1417655111:ref:refs/heads/main',
+                'repository_id': '1417655111', 'repository_owner_id': '335954076'}
     print(json.dumps({'identityChecks': {key: claims.get(key) == value for key, value in expected.items()},
                       'numericTimes': {key: isinstance(claims.get(key), (int, float)) for key in ['exp', 'iat', 'nbf']}}), flush=True)
     try:
