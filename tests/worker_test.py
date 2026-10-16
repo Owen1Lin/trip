@@ -115,7 +115,7 @@ class WorkerTests(unittest.TestCase):
             return '虛構甲店 菜單300円'
         with patch.dict(sys.modules,{'trafilatura':types.SimpleNamespace(extract=extract_body)}), patch.object(worker,'validate_url',side_effect=lambda value,*args:value), patch.object(worker,'public_opener',return_value=Opener('<title>虛構公開食記</title><article>虛構甲店</article>')):
             result=worker.extract_article('https://example.com/article','/tmp/synthetic','http://127.0.0.1:1234')
-            self.assertEqual(result['text'],'虛構公開食記\n虛構甲店 菜單300円');self.assertEqual(result['title'],'虛構公開食記');self.assertEqual(result['type'],'webpage');self.assertTrue(any('未收錄' in warning for warning in result['warnings']))
+            self.assertEqual(result['text'],'虛構公開食記\n虛構甲店 菜單300円');self.assertEqual(result['title'],'虛構公開食記');self.assertEqual(result['type'],'webpage');self.assertTrue(any('缺項保持待確認' in warning for warning in result['warnings']))
         with patch.dict(sys.modules,{'trafilatura':types.SimpleNamespace(extract=lambda *args,**kwargs:'Log in to Threads to continue reading this public post.')}), patch.object(worker,'validate_url',side_effect=lambda value,*args:value), patch.object(worker,'public_opener',return_value=Opener('<title>Threads</title><article>Log in to Threads to continue.</article>')), self.assertRaises(worker.ExtractionError):
             worker.extract_article('https://example.com/article','/tmp/synthetic','http://127.0.0.1:1234')
 
@@ -131,6 +131,12 @@ class WorkerTests(unittest.TestCase):
         for fact in ['虛構天神支店','11:00–23:00','測試拉麵 900円','測試市1號']:self.assertIn(fact,result['text'])
         for ignored in ['SECRET_SCRIPT','OTHER_BRANCH','UNRELATED_FOOTER']:self.assertNotIn(ignored,result['text'])
         self.assertLessEqual(len(result['text']),worker.MAX_TEXT)
+
+    def test_html_fallback_excludes_explicit_hidden_branch_subtrees(self):
+        for attribute in ['hidden','hidden="false"','aria-hidden="true"','style="display:none"','style="DISPLAY: none !important;"','style="visibility:hidden"','style="color:red;display:/*hidden*/none;"']:
+            with self.subTest(attribute=attribute):
+                markup=f'<body><main>虛構目前分店</main><div {attribute}><section>HIDDEN_BRANCH</section><p>SECRET_PRICE</p></div><p>目前分店的菜單300円</p></body>'
+                text=worker.visible_body_text(markup);self.assertIn('虛構目前分店',text);self.assertIn('菜單300円',text);self.assertNotIn('HIDDEN_BRANCH',text);self.assertNotIn('SECRET_PRICE',text)
 
     def test_existing_proxy_policy_is_never_bypassed(self):
         job={'id':'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','url':'https://example.com/public'}

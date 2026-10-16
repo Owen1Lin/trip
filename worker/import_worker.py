@@ -250,12 +250,15 @@ def visible_body_text(markup):
             super().__init__(convert_charrefs=True);self.stack=[];self.parts=[]
         def handle_starttag(self,tag,attrs):
             if tag in self.blocks:self.parts.append('\n')
-            if tag not in self.void:self.stack.append(tag)
+            values=dict(attrs);style=re.sub(r'/\*[\s\S]*?\*/','',values.get('style') or '')
+            hidden='hidden' in values or (values.get('aria-hidden') or '').lower()=='true' or bool(re.search(r'(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*(?:hidden|collapse))\s*(?:!important\s*)?(?:;|$)',style,re.I))
+            if tag not in self.void:self.stack.append((tag,tag in self.skipped or hidden))
         def handle_endtag(self,tag):
-            if tag in self.stack:self.stack=self.stack[:len(self.stack)-1-self.stack[::-1].index(tag)]
+            tags=[item[0] for item in self.stack]
+            if tag in tags:self.stack=self.stack[:len(tags)-1-tags[::-1].index(tag)]
             if tag in self.blocks:self.parts.append('\n')
         def handle_data(self,data):
-            if not any(tag in self.skipped for tag in self.stack):self.parts.append(data)
+            if not any(hidden for _,hidden in self.stack):self.parts.append(data)
     reader=Reader();reader.feed(markup);reader.close()
     return '\n'.join(line for part in ''.join(reader.parts).splitlines() if (line := re.sub(r'\s+', ' ', part).strip()))
 
@@ -287,7 +290,7 @@ def extract_article(url, directory, proxy, include_frames=False, progress=lambda
     warnings = ['來源是否為官方尚未核實；沒有補查其他官網或評論。']
     if title and title not in content:
         content = title + '\n' + content
-    warnings.append('正文由工具擷取，頁面版型可能使部分菜單或分店細節未收錄；請對照原文，缺項保持待確認。')
+    warnings.append('正文由工具擷取，未執行網頁腳本或計算外部 CSS；版型可能漏資料或混入其他區塊，請對照原文核對分店，缺項保持待確認。')
     if len(content) > MAX_TEXT:
         content = content[:MAX_TEXT]
         warnings.append('正文超過 12000 字，只保留前段；不是完整文章。')
