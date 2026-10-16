@@ -5,6 +5,7 @@ Original/derived media live only in a TemporaryDirectory and are never artifacts
 """
 import argparse
 import json
+from html.parser import HTMLParser
 import os
 import re
 import signal
@@ -239,6 +240,26 @@ def extract_video(url, directory, proxy, include_frames=False, progress=lambda p
             'frameTexts': frame_texts[:MAX_FRAMES], 'warnings': warnings}
 
 
+def visible_body_text(markup):
+    """Bounded fallback for short restaurant pages whose tables were omitted."""
+    class Reader(HTMLParser):
+        skipped = {'head','script','style','template','noscript','nav','header','footer','aside','form'}
+        void = {'area','base','br','col','embed','hr','img','input','link','meta','param','source','track','wbr'}
+        blocks = {'br','p','div','li','h1','h2','h3','h4','h5','h6','section','tr','td','th','dt','dd','address'}
+        def __init__(self):
+            super().__init__(convert_charrefs=True);self.stack=[];self.parts=[]
+        def handle_starttag(self,tag,attrs):
+            if tag in self.blocks:self.parts.append('\n')
+            if tag not in self.void:self.stack.append(tag)
+        def handle_endtag(self,tag):
+            if tag in self.stack:self.stack=self.stack[:len(self.stack)-1-self.stack[::-1].index(tag)]
+            if tag in self.blocks:self.parts.append('\n')
+        def handle_data(self,data):
+            if not any(tag in self.skipped for tag in self.stack):self.parts.append(data)
+    reader=Reader();reader.feed(markup);reader.close()
+    return '\n'.join(line for part in ''.join(reader.parts).splitlines() if (line := re.sub(r'\s+', ' ', part).strip()))
+
+
 def extract_article(url, directory, proxy, include_frames=False, progress=lambda phase: None):
     import trafilatura
     validate_url(url)
@@ -252,6 +273,10 @@ def extract_article(url, directory, proxy, include_frames=False, progress=lambda
     # Restaurant pages often put branch details in short tables alongside a
     # generic introduction. Precision-only extraction discarded those details.
     content = trafilatura.extract(html, include_comments=False, include_tables=True, include_links=False, favor_recall=True) or ''
+    if len(content.strip()) < 800:
+        visible = visible_body_text(html)
+        if len(visible) > len(content) + 200:
+            content = visible
     if not content.strip():
         raise ExtractionError('來源沒有可讀正文，可能需登入或禁止公開擷取；請貼上原文或圖片。')
     title_match = re.search(r'<title\b[^>]*>([^<]*)</title>', html, re.I)

@@ -119,6 +119,19 @@ class WorkerTests(unittest.TestCase):
         with patch.dict(sys.modules,{'trafilatura':types.SimpleNamespace(extract=lambda *args,**kwargs:'Log in to Threads to continue reading this public post.')}), patch.object(worker,'validate_url',side_effect=lambda value,*args:value), patch.object(worker,'public_opener',return_value=Opener('<title>Threads</title><article>Log in to Threads to continue.</article>')), self.assertRaises(worker.ExtractionError):
             worker.extract_article('https://example.com/article','/tmp/synthetic','http://127.0.0.1:1234')
 
+    def test_short_article_preserves_real_html_table_evidence(self):
+        class Response(io.BytesIO):
+            url='https://example.com/branch'
+            def __init__(self,markup):
+                super().__init__(markup.encode());self.headers=Message();self.headers['Content-Type']='text/html; charset=utf-8'
+        markup='<html><head><title>虛構天神支店</title><script>SECRET_SCRIPT</script></head><body><nav>OTHER_BRANCH</nav><main><h1>虛構天神支店</h1><p>'+('虛構餐廳的來源介紹。'*30)+'</p><table><tr><th>營業時間</th><td>11:00–23:00</td></tr><tr><th>菜單</th><td>測試拉麵 900円</td></tr></table><dl><dt>地址</dt><dd>測試市1號</dd></dl></main><footer>UNRELATED_FOOTER</footer></body></html>'
+        opener=types.SimpleNamespace(open=lambda *args,**kwargs:Response(markup))
+        with patch.dict(sys.modules,{'trafilatura':types.SimpleNamespace(extract=lambda *args,**kwargs:'虛構餐廳的來源介紹。')}),patch.object(worker,'validate_url',side_effect=lambda value,*args:value),patch.object(worker,'public_opener',return_value=opener):
+            result=worker.extract_article('https://example.com/branch','/tmp/synthetic','http://127.0.0.1:1234')
+        for fact in ['虛構天神支店','11:00–23:00','測試拉麵 900円','測試市1號']:self.assertIn(fact,result['text'])
+        for ignored in ['SECRET_SCRIPT','OTHER_BRANCH','UNRELATED_FOOTER']:self.assertNotIn(ignored,result['text'])
+        self.assertLessEqual(len(result['text']),worker.MAX_TEXT)
+
     def test_existing_proxy_policy_is_never_bypassed(self):
         job={'id':'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','url':'https://example.com/public'}
         for name in ['HTTP_PROXY','HTTPS_PROXY','http_proxy','https_proxy']:
