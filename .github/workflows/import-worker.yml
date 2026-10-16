@@ -1,0 +1,66 @@
+name: Private import background worker
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'worker/**'
+      - '.github/workflows/import-worker.yml'
+      - 'supabase/functions/import-jobs/**'
+      - 'supabase/import-jobs.sql'
+  workflow_dispatch:
+    inputs:
+      self_test:
+        description: Run bounded synthetic diagnostics and fixed public-source checks (no member data)
+        type: boolean
+        default: false
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: private-import-worker
+  cancel-in-progress: false
+jobs:
+  worker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Claim one member-private task with short-lived OIDC
+        if: inputs.self_test != true && github.event_name != 'push'
+        id: claim
+        env:
+          JOB_FILE: ${{ runner.temp }}/trip-import-job.json
+        run: python worker/import_worker.py --claim-only --job-file "$JOB_FILE"
+      - name: Install bounded media processing tools
+        if: steps.claim.outputs.has_job == 'true' || inputs.self_test == true || github.event_name == 'push'
+        run: |
+          python -m pip install --disable-pip-version-check -r worker/requirements.txt
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg espeak tesseract-ocr tesseract-ocr-jpn tesseract-ocr-chi-tra
+          python -c "from importlib.metadata import version; print({name: version(name) for name in ['yt-dlp','faster-whisper','trafilatura','Pillow']})"
+          ffmpeg -version | head -1
+          tesseract --version 2>&1 | head -1
+      - name: Verify real OIDC, CPU transcription, OCR, and fixed public sources
+        if: inputs.self_test == true || github.event_name == 'push'
+        env:
+          HF_HUB_DISABLE_PROGRESS_BARS: '1'
+          HF_HUB_DISABLE_TELEMETRY: '1'
+        run: python worker/self_test.py
+      - name: Extract captions first, transcribe only when needed
+        if: steps.claim.outputs.has_job == 'true'
+        env:
+          JOB_FILE: ${{ runner.temp }}/trip-import-job.json
+          IMPORT_WHISPER_MODEL: tiny
+          HF_HUB_DISABLE_PROGRESS_BARS: '1'
+          HF_HUB_DISABLE_TELEMETRY: '1'
+        run: python worker/import_worker.py --job-file "$JOB_FILE"
+      - name: Remove any leftover private task file
+        if: always()
+        env:
+          JOB_FILE: ${{ runner.temp }}/trip-import-job.json
+        run: rm -f "$JOB_FILE"

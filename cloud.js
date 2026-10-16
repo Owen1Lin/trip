@@ -119,9 +119,11 @@
       || !data.refresh_token || !Number.isFinite(Number(data.expires_at))) throw rejected('登入資訊不完整，請重新登入。');
     return { access_token: data.access_token, refresh_token: data.refresh_token, expires_at: Number(data.expires_at) };
   }
-  async function request(path, { method = 'GET', body, auth = true, headers = {}, timeoutMs = 20000 } = {}) {
+  async function request(path, { method = 'GET', body, auth = true, headers = {}, timeoutMs = 20000, signal } = {}) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const abort=()=>controller.abort();
+    if(signal?.aborted)controller.abort();else signal?.addEventListener('abort',abort,{once:true});
     try {
       const response = await fetch(config.url.replace(/\/$/, '') + path, {
         method, signal: controller.signal,
@@ -136,8 +138,11 @@
       let data = null;
       try { data = text ? JSON.parse(text) : null; } catch { throw new Error('服務回應格式異常，請稍後再試。'); }
       if (!response.ok) {
+        if(path==='/functions/v1/import-jobs' && response.status===404)throw new Error(typeof data?.error==='string'?data.error.slice(0,500):'背景任務服務尚未部署，請補貼文字／圖片，或稍後再試。');
+        if(path==='/functions/v1/import-jobs' && typeof data?.error==='string')throw new Error(data.error.slice(0,500));
         if (path === '/functions/v1/link-import' && response.status === 404) throw new Error('Supabase 尚未部署 link-import 公開連結匯入服務，請通知歐文完成部署。');
-        if (path === '/functions/v1/link-import' && response.status === 422) throw new Error('平台限制或此連結沒有可讀取的公開資料，請核對原始連結後手動填寫。');
+        if (path === '/functions/v1/link-import' && response.status === 422) throw new Error(typeof data?.error==='string' ? data.error.slice(0,500) : '平台限制或此連結沒有可讀取的公開資料，請核對原始連結後手動填寫。');
+        if(path === '/functions/v1/link-import' && typeof data?.error==='string')throw new Error(data.error.slice(0,500));
         if (response.status === 404) throw new Error('專屬空間尚未完成設定，請通知歐文。');
         if (response.status === 409) throw new Error('共同行程已更新，請先載入最新內容，再合併修改。');
         if (response.status === 429) throw new Error('請稍等一下，再重試這個操作。');
@@ -148,7 +153,7 @@
       if (error.name === 'AbortError') throw new Error('連線逾時，請檢查網路後重試。');
       if (error instanceof TypeError) throw new Error('目前無法連線，請檢查網路後重試。');
       throw error;
-    } finally { clearTimeout(timeout); }
+    } finally { clearTimeout(timeout);signal?.removeEventListener('abort',abort); }
   }
   async function refreshSession() {
     if (!session) throw rejected('請先使用 Google 登入。');
@@ -260,7 +265,32 @@
       throw error;
     }
   }
-  window.TripAuth = Object.freeze({ requireMembership, importPublicLink });
+  async function importAnalysis(payload,{signal}={}) {
+    const attempt=generation;
+    try {
+      await requireMembership();
+      if(attempt!==generation) throw rejected('登入狀態已變更，請重新登入。');
+      const result=await request('/functions/v1/link-import',{method:'POST',body:{...payload,version:2},timeoutMs:50000,signal});
+      if(attempt!==generation) throw rejected('登入狀態已變更，請重新登入。');
+      return result;
+    }catch(error){
+      if(error.denied && attempt===generation)lock(error.message);
+      throw error;
+    }
+  }
+
+  async function importJobs(payload,{signal}={}) {
+    const attempt=generation;
+    try {
+      await requireMembership();
+      if(attempt!==generation)throw rejected('登入狀態已變更，請重新登入。');
+      const result=await request('/functions/v1/import-jobs',{method:'POST',body:payload,timeoutMs:25000,signal});
+      if(attempt!==generation)throw rejected('登入狀態已變更，請重新登入。');
+      return result;
+    }catch(error){if(error.denied && attempt===generation)lock(error.message);throw error;}
+  }
+
+  window.TripAuth = Object.freeze({ requireMembership, importPublicLink, importAnalysis, importJobs, getVerifiedIdentity:requireMembership, getCurrentIdentity:()=>session && member && !app.hidden && tokenUser(session)===member.id ? {...member} : null });
   function renderLogin(text = '') {
     panel.replaceChildren();
     const button = element('button', '使用 Google 帳號登入', 'google-sign-in');
@@ -330,6 +360,7 @@
     email.classList.remove('actor-owen', 'actor-winnie'); email.classList.add(`actor-${member.actor}`);
     if (restoring) restoring.hidden = true;
     screen.hidden = true; app.hidden = false; app.inert = false;
+    window.dispatchEvent(new CustomEvent('trip-member-ready',{detail:{id:identity.id,scope:identity.scope}}));
     message('正在載入共同手帳；可以先編輯本頁，載入後不會覆蓋你的新修改。', true);
     renderSaveReminder();
     const snapshot = await sharedSnapshot({ verified: true });

@@ -42,6 +42,14 @@ jobs:
           node tests/quick-entry.test.cjs
           node tests/flexible-parser.test.cjs
           node tests/flexible-flow.test.cjs
+          node tests/rich-backend.test.cjs
+          node tests/rich-import-security.test.cjs
+          node tests/rich-captions.test.cjs
+          node tests/rich-worker-auth.test.cjs
+          node tests/rich-jobs-backend.test.cjs
+          node tests/rich-import.test.cjs
+          node tests/rich-jobs-browser.test.cjs
+          python3 tests/worker_test.py
   cloud-readiness:
     runs-on: ubuntu-latest
     permissions:
@@ -69,10 +77,12 @@ jobs:
           node --check link-import.js
           node --check mobile-ui.js
           node --check quick-entry.js
+          node --check import-store.js
+          node --check import-ocr.js
       - name: Prepare public files
         run: |
           mkdir -p public
-          cp index.html styles.css app.js cloud.js cloud-config.js link-import.js mobile-ui.js quick-entry.js public/
+          cp index.html styles.css app.js cloud.js cloud-config.js link-import.js mobile-ui.js quick-entry.js import-store.js import-ocr.js public/
           cp -R assets public/assets
           touch public/.nojekyll
       - uses: actions/configure-pages@v5

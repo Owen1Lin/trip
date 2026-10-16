@@ -1,0 +1,21 @@
+{
+  "tesseract.js": "6.0.1",
+  "tesseract.js-core": "6.1.2",
+  "tessdata": "naptha/tessdata 4.0.0_fast",
+  "files": {
+    "tesseract.min.js.LICENSE.txt": "cdf963ced7d25a0f98901a547647b4d6e2dbe0197fd78c87a059a87b0e542fe2",
+    "tesseract-core-simd.wasm.js": "3b0678c47a8dea6abb931b214171c08b742a5b9a9fcbbb1a028a08d5de6e9d4c",
+    "eng.traineddata.gz": "18c1ac52b75e35d44735fb6c2a60acfaf23033524653200738e98f0243edb75b",
+    "jpn.traineddata.gz": "cac936a50547d9546d48bd6d46372fd89f1ba49209b678cf23ed938092688a28",
+    "tesseract-core-lstm.wasm.js": "775a35df6f2ae100e02609443e6bd5cafcd07983dd6175454ca4a432a7730687",
+    "LICENSE-tessdata.txt": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "worker.min.js": "38645599043239c0eb6db08a6504a92dcdc292200535f3e9339cd77c4443b842",
+    "LICENSE-core.txt": "b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1",
+    "tesseract.min.js": "10fff78484067759c43028a02a72d76d0b90eb17302bb23b58a9ec5410bc928b",
+    "LICENSE-tesseract.txt": "b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1",
+    "chi_tra.traineddata.gz": "542b2aecc8e4a3b760694301381543d76bdcd8afdf6d899fb03381801b5e2b47",
+    "tesseract-core-simd-lstm.wasm.js": "9d7c43fb206dc9f48475228b46bf35f888fa9e6259da2e67d5a75c77049f2dc7",
+    "tesseract-core.wasm.js": "e66872f6a76f5ad414d73d21512245df0de3060ad4871a97c47efceaab27b955",
+    "worker.min.js.LICENSE.txt": "45f54171aeaa1d10c0c1a66f374b7bba1f02472b1487fbe892eec04f840002ac"
+  }
+}

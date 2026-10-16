@@ -1,0 +1,17 @@
+// Synthetic YouTube watch page / caption bytes; no real platform requests.
+const assert=require('node:assert/strict');
+(async()=>{
+ const {youtubeCaptionTrack,parseYoutubeCaptions,fetchYoutubeCaptions,isPublicAddress}=await import('../supabase/functions/link-import/rich-core.mjs');
+ const page=tracks=>'<html><head><meta property="og:title" content="虛構字幕影片"></head><script>const data='+JSON.stringify({captionTracks:tracks})+';</script></html>';
+ const allowed='https://www.youtube.com/api/timedtext?v=FAKE123';
+ for(const url of ['http://www.youtube.com/api/timedtext','https://user:pass@www.youtube.com/api/timedtext','https://www.youtube.com:8443/api/timedtext','https://127.0.0.1/api/timedtext','https://www.youtube.com.evil.example/api/timedtext','https://www.youtube.com/other','https://metadata.internal/api/timedtext'])assert.equal(youtubeCaptionTrack(page([{baseUrl:url}])),null,url);
+ assert.equal(youtubeCaptionTrack(page([{baseUrl:allowed,kind:'asr'},{baseUrl:allowed+'&manual=true'}])).automatic,false,'human caption track wins over ASR');
+ assert.equal(isPublicAddress('2001::1'),false,'Teredo transition denied');
+ const captions=JSON.stringify({events:[{tStartMs:1500,segs:[{utf8:'虛構字幕甲店 '},{utf8:'菜單300円'}]},{tStartMs:-1,segs:[{utf8:'ignore negative time'}]}]});assert.equal(parseYoutubeCaptions(captions),'[0:01] 虛構字幕甲店 菜單300円');assert.equal(parseYoutubeCaptions('<transcript><text start="61">虛構 &amp; 文字</text></transcript>'),'[1:01] 虛構 & 文字');for(const raw of ['{}','not captions','{"title":"fake"}'])assert.throws(()=>parseYoutubeCaptions(raw));
+ let calls=[];const resolver=async()=>['8.8.8.8'];const input='https://www.youtube.com/watch?v=FAKE123';
+ const result=await fetchYoutubeCaptions(input,{resolver,fetcher:async(url,options)=>{calls.push(String(url));assert.equal(options.redirect,'manual');return calls.length===1?new Response(page([{baseUrl:allowed,kind:'asr'}]),{headers:{'content-type':'text/html'}}):new Response(captions);}});assert.equal(result.type,'video_caption');assert.match(result.text,/虛構字幕甲店/);assert.ok(result.warnings.some(value=>value.includes('自動字幕')));assert.equal(calls.length,2);
+ for(const target of ['https://127.0.0.1/private','http://www.youtube.com/api/timedtext','https://example.com/api/timedtext']){calls=[];await assert.rejects(()=>fetchYoutubeCaptions(input,{resolver,fetcher:async(url)=>{calls.push(String(url));return calls.length===1?new Response(page([{baseUrl:allowed}]),{headers:{'content-type':'text/html'}}):new Response(null,{status:302,headers:{location:target}});}}));assert.equal(calls.length,2,'host/scheme/private redirect rejected before follow');}
+ let dnsCalls=0,fetchCalls=0;await assert.rejects(()=>fetchYoutubeCaptions(input,{resolver:async()=>++dnsCalls<3?['8.8.8.8']:['10.0.0.1'],fetcher:async()=>{fetchCalls++;return new Response(page([{baseUrl:allowed}]),{headers:{'content-type':'text/html'}});}}));assert.equal(fetchCalls,1,'caption DNS private result rejected before fetch');
+ await assert.rejects(()=>fetchYoutubeCaptions(input,{resolver,fetcher:async()=>new Response(page([]),{headers:{'content-type':'text/html'}})}),'metadata-only page is not video evidence');
+ console.log('PASS (synthetic captions): exact timed words, human-before-ASR, no metadata substitute, fixed YouTube caption endpoint, HTTPS/host/port/credential/private-DNS/redirect denial. Live YouTube separate.');
+})().catch(error=>{console.error(error);process.exitCode=1;});

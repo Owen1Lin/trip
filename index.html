@@ -5,8 +5,8 @@
 <meta name="description" content="歐文＆溫妮專屬小空間，福岡與九州五日旅行手帳。"><title>歐文＆溫妮專屬小空間</title>
 <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon-v2.png">
 <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-v2.png">
-<link rel="stylesheet" href="styles.css?v=keyboard-visibility-4"><script src="quick-entry.js?v=keyboard-visibility-4" defer></script><script src="app.js?v=keyboard-visibility-4" defer></script><script src="cloud-config.js?v=keyboard-visibility-4" defer></script><script src="cloud.js?v=keyboard-visibility-4" defer></script><script src="link-import.js?v=keyboard-visibility-4" defer></script>
-<script src="mobile-ui.js?v=keyboard-visibility-4" defer></script>
+<link rel="stylesheet" href="styles.css?v=rich-import-5"><script src="quick-entry.js?v=rich-import-5" defer></script><script src="app.js?v=rich-import-5" defer></script><script src="cloud-config.js?v=rich-import-5" defer></script><script src="cloud.js?v=rich-import-5" defer></script><script src="import-store.js?v=rich-import-5" defer></script><script src="import-ocr.js?v=rich-import-5" defer></script><script src="link-import.js?v=rich-import-5" defer></script>
+<script src="mobile-ui.js?v=rich-import-5" defer></script>
 </head>
 <body>
 <section id="auth-restoring" class="auth-restoring" role="status" aria-live="polite" aria-label="正在恢復登入"><div class="restoring-shell"><div class="restoring-brand"><img src="assets/travel-brand-v2.png" width="44" height="44" alt=""><span>旅行手帳</span></div><p>正在開啟手帳…</p><div class="restoring-title" aria-hidden="true"></div><div class="restoring-dates" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div><div class="restoring-row" aria-hidden="true"></div><div class="restoring-row" aria-hidden="true"></div></div></section>
@@ -21,13 +21,22 @@
 </section>
 <section id="view-link-import" class="app-view" data-app-view="link-import" hidden aria-labelledby="link-import-title"><div class="view-heading"><p class="eyebrow">FROM SAVED TO SOMEDAY</p><p class="view-kicker">收藏的靈感，變成我們的下一站。</p></div>
 <section class="link-import-panel" aria-labelledby="link-import-title">
-<div class="link-import-heading"><div><p class="eyebrow">SAVE A PLACE, PLAN IT TOGETHER</p><h2 id="link-import-title">把喜歡的連結，變成旅行草稿</h2></div><span class="draft-badge">先確認，再加入</span></div>
-<p class="import-description" id="link-import-help">貼上 Google Maps、Threads 或 Instagram 公開連結。只整理能取得的公開資料；缺少資訊會標示「待確認」，日期與時間由我們親自決定。</p>
+<div class="link-import-heading"><div><p class="eyebrow">SAVE A PLACE, PLAN IT TOGETHER</p><h2 id="link-import-title">把收藏的靈感，整理成旅行草稿</h2></div><span class="draft-badge">先確認，再加入</span></div>
+<p class="import-description" id="link-import-help">貼上公開網址、加入圖片，或直接提供原文與字幕，也可以一起使用。支援依來源實際可讀取的內容整理；受限或讀取失敗會說明原因，不會直接加入行程。</p>
 <form id="link-import-form" aria-describedby="link-import-help">
-<div class="link-import-controls"><div class="form-field"><label for="link-url">公開連結</label><input id="link-url" type="url" required maxlength="2048" placeholder="https://maps.google.com/…" autocomplete="off" inputmode="url"></div><div class="form-field"><label for="link-model">草稿整理方式</label><select id="link-model"><option value="metadata">僅公開資料（不使用模型）</option><option value="qwen">Qwen</option><option value="llama">Llama</option></select></div><button id="link-fetch" class="primary-button" type="submit">取得公開資料</button></div>
-<p class="import-description">可選 Qwen／Llama 協助整理，只採用來源明示資訊。若無法讀取，可開啟原始連結後手動填寫。</p>
+<div class="link-import-controls"><div class="form-field"><label for="link-url">公開連結</label><input id="link-url" type="url" maxlength="2048" placeholder="公開影片、貼文、地點或店家網站網址" autocomplete="off" inputmode="url"></div><div class="form-field"><label for="link-model">整理方式</label><select id="link-model"><option value="metadata">僅公開資料（不使用模型）</option><option value="qwen">Qwen</option><option value="llama">Llama</option></select></div></div>
+<div class="import-inputs"><div class="form-field"><label for="link-images">圖片（選填，可多張）</label><input id="link-images" type="file" accept="image/png,image/jpeg,image/webp" multiple aria-describedby="import-image-help"><small id="import-image-help">可提供菜單、招牌或公開內容截圖。圖片在本機辨識文字，原圖不會送給文字模型；辨識可能有誤，請對照原圖核對。只有餐點照片時，不會直接猜店名。</small></div><div id="import-image-list" class="import-image-list" aria-label="已選圖片"></div>
+<div class="form-field"><label for="link-text">原文／字幕／圖片文字（選填）</label><textarea id="link-text" rows="4" maxlength="12000" placeholder="若網址無法讀取，可貼上你取得的公開原文或字幕；圖片文字辨識有誤時也能在此補充。" aria-describedby="import-text-help"></textarea><small id="import-text-help">最多 12,000 字。保留來源原文以利核對，不需要提供帳號密碼、驗證碼或 Cookie。</small></div></div>
+<p class="import-description">Qwen／Llama 僅整理可取得的文字，不直接看圖；使用模型可能產生既有服務的 API 費用。可讀取的平台與補查能力以每筆結果為準，沒有補查會明示。發布日期、店家營業時間與我們的旅行時間分開核對。</p>
+<label class="import-confirm import-frame-option" for="link-include-frames"><input id="link-include-frames" type="checkbox" aria-describedby="import-frame-help"><span>抽樣影片畫面文字（最多 3 張，較慢）</span></label>
+<p class="import-description" id="import-frame-help">只在需要核對影片畫面中的店名、菜單等文字時勾選。背景影音處理上限為 10 分鐘影片、50 MB 及 8 分鐘運算；無法取得影音或超過限制時會說明原因。</p>
+<p class="import-description" id="import-rebuild-help">再次整理會重建下方草稿並取代尚未加入的手動修改；請先確認已保留需要的內容。原始輸入保留，整理不會直接新增行程。</p>
+<div class="planner-actions import-organize-actions"><button aria-describedby="import-rebuild-help" id="link-fetch" class="primary-button" type="submit">整理資訊</button></div>
 </form>
 <p id="link-import-status" class="import-status" role="status" aria-live="polite" aria-atomic="true"></p>
+<ol id="import-progress" class="import-progress" aria-label="整理進度" aria-live="polite"></ol>
+<section id="import-results" class="import-results" hidden aria-labelledby="import-results-title"><div class="link-import-heading"><h3 id="import-results-title" tabindex="-1">逐筆核對與選擇</h3><span class="draft-badge">核對後才加入</span></div><p id="import-results-summary" class="import-description" role="status" aria-live="polite"></p><p class="import-description">來源內容、整理摘要與你的修改分區顯示。未核實的來源身分不代表官方；個人心得保留為個人觀點。店家資訊與來源日期供參考，旅行日期與起訖時間由你決定，可保留待確認。</p><div id="import-results-list" class="import-results-list"></div><div class="planner-actions import-batch-actions"><button id="import-batch-add" class="primary-button" type="button">確認並加入所選行程</button><button id="import-clear-results" class="secondary-button" type="button">捨棄本次草稿</button></div><p class="import-description">整批核對通過才加入；加入後記得儲存，另一位才能載入。捨棄草稿會清除本次整理結果及附件。</p></section>
+<section id="import-history" class="import-history" hidden aria-labelledby="import-history-title"><h3 id="import-history-title">最近整理任務</h3><p class="import-description">僅顯示你有權限查看的任務；狀態以實際回報為準。影片轉錄等背景工作會先排隊，排程約每 15 分鐘啟動一次，也可能延後；排隊不代表已完成。可離開頁面，重新開啟後查看結果。</p><div id="import-history-list"></div></section>
 <form id="link-draft-form" class="link-draft-form" hidden aria-labelledby="link-draft-title">
 <div class="link-import-heading"><h3 id="link-draft-title" tabindex="-1">確認這份草稿</h3><a id="draft-source" class="text-link source-link" target="_blank" rel="noopener noreferrer">開啟原始連結 ↗</a></div>
 <div class="form-field"><label for="draft-evidence">取得的公開資料</label><textarea id="draft-evidence" class="draft-evidence" rows="3" readonly aria-describedby="draft-evidence-help"></textarea><small id="draft-evidence-help">這裡保留來源內容供核對；下方草稿可以自行修改。貼文發布時間與店家營業時間不代表我們的行程時間。</small></div>

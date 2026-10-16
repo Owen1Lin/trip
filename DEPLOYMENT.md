@@ -105,3 +105,19 @@ Maps 短網址解析成功且地點頁只回傳通用 metadata 時，可使用�
 `main` 更新會執行瀏覽器操作與登入／同步模擬驗收；通過後發布登入保護的頁面。獨立的 `cloud-readiness` job 檢查真實 Google Provider 與匿名資料庫防護，未設定完成會顯示失敗。這項失敗不會阻擋先發布登入保護畫面，以免舊版公開操作介面繼續在線。
 
 實際 Google 授權、兩會員存取及跨帳號共享，需要上面的帳號設定與真實登入驗證；模擬測試及匿名檢查不能取代這項驗證。匿名權限拒絕也不足以單獨證明全部會員 RLS 規則。
+
+## 證據摘要 v2 與私有背景任務
+
+沿用既有 Supabase 專案、Google OAuth、會員與行程 RLS，不重設帳號或既有資料。先以管理 API／SQL Editor 套用 `supabase/import-jobs.sql`，其新增 `trip_import_jobs`、限流收據及 worker 設定，未修改既有行程表。部署兩支函式：
+
+```sh
+NODE_USE_ENV_PROXY=1 node scripts/deploy-import.mjs
+```
+
+管理憑證由安全環境設定提供，不提交 `.env` 或值。`link-import` 保留 v1，v2 處理公開正文、字幕、OCR 文字及逐字來源摘要；`import-jobs` 核實會員並以本人 JWT 查 owner RLS。service role 只在驗證過 GitHub OIDC 的 worker 操作內使用，永不傳前端。函式平台 JWT gate 關閉是為同時接收 Google/Supabase 與 GitHub OIDC，兩種身份仍由程式嚴格驗證。
+
+`import-worker.yml` 使用既有公開 repo 的標準 Ubuntu runner、每 15 分鐘排程與可信 main push／人工觸發，不新增付費主機或長期金鑰。部署後先確認 OIDC 與虛構語音／菜單的真工具診斷，再開啟 `trip_import_worker_config.enabled`。心跳超過 20 分鐘時拒絕建立新任務，顯示服務未就緒；GitHub 排程不保證即時啟動。worker 的建立、領取租約、進度、成功／失敗與刪除均須分別驗證。詳見 `worker/README.md`。
+
+原圖不需建立公開 Storage bucket，僅存在核實會員可讀的本裝置暫存；伺服器任務保存來源文字，runner 的暫存影音在結束時刪除且不發布 artifact。沒有設定搜尋 API，故不宣稱已查過額外官網或評論。若將來加入付費搜尋／GPU／獨立 worker，必須先列出具體設定與成本；本次未開通這些服務。
+
+模型仍使用既有文字端點及金鑰。Qwen／Llama 的圖片輸入不受支援；圖片先在本機 OCR。一次整理只呼叫選定模型，失敗不自動反覆重試產生成本。模型供應商、Supabase 既有方案額度與網路流量仍可能計費；開源引擎不代表所有運作成本為零。

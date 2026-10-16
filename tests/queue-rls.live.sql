@@ -1,0 +1,54 @@
+create or replace function pg_temp.verify_import_queue() returns jsonb language plpgsql as $$
+declare uid uuid;mail text;second_uid uuid;second_mail text;j jsonb;j2 jsonb;leased jsonb;report jsonb:='{}'::jsonb;blocked boolean;fake_result jsonb:='{"url":"https://example.com/demo","title":"Synthetic fixture","type":"webpage","text":"DEMO CAFE Coffee 400 JPY"}'::jsonb;
+begin
+ begin
+  select u.id,u.email into uid,mail from auth.users u join public.private_trip_members m on lower(u.email)=m.email join auth.identities i on i.user_id=u.id and i.provider='google' where u.email_confirmed_at is not null limit 1;
+  if uid is null then raise exception 'No registered verified member; live member RLS cannot be simulated';end if;
+  select u.id,u.email into second_uid,second_mail from auth.users u join public.private_trip_members m on lower(u.email)=m.email join auth.identities i on i.user_id=u.id and i.provider='google' where u.email_confirmed_at is not null and u.id<>uid limit 1;
+  update public.trip_import_worker_config set enabled=true,last_heartbeat=now() where id;
+  perform set_config('request.jwt.claims',jsonb_build_object('sub',uid::text,'email',mail,'role','authenticated','amr',jsonb_build_array(jsonb_build_object('method','oauth')))::text,true);
+  execute 'set local role authenticated';
+  assert public.is_private_trip_member(),'Existing verified member claims did not satisfy membership';
+  j:=public.trip_import_enqueue('https://example.com/demo','metadata','synthetic-live-fixture-1');
+  j2:=public.trip_import_enqueue('https://example.com/demo','metadata','synthetic-live-fixture-1');
+  assert j->>'id'=j2->>'id','Idempotency failed';
+  assert exists(select 1 from public.trip_import_jobs where id=(j->>'id')::uuid),'Owner cannot read own row';
+  report:=report||'{"member_owner_read":true,"idempotency":true}';
+  blocked:=false;begin perform public.trip_import_claim();exception when insufficient_privilege then blocked:=true;end;assert blocked,'Member could execute worker claim';
+  blocked:=false;begin insert into public.trip_import_jobs(owner_id,idempotency_key,source_url,model)values(uid,'forbidden-write','https://example.com/','metadata');exception when insufficient_privilege then blocked:=true;end;assert blocked,'Direct member table write succeeded';
+  report:=report||'{"member_worker_denied":true,"direct_write_denied":true}';
+  if second_uid is not null then
+   perform set_config('request.jwt.claims',jsonb_build_object('sub',second_uid::text,'email',second_mail,'role','authenticated','amr',jsonb_build_array(jsonb_build_object('method','oauth')))::text,true);
+   assert public.is_private_trip_member(),'Second verified member did not satisfy membership';
+   assert not exists(select 1 from public.trip_import_jobs where id=(j->>'id')::uuid),'Second member read first owner job';
+   report:=report||'{"second_member_owner_isolation":true}';
+  else report:=report||'{"second_member_owner_isolation":"not tested: second registered Google identity unavailable"}';end if;
+  perform set_config('request.jwt.claims',jsonb_build_object('sub',gen_random_uuid()::text,'email','synthetic-outsider@example.invalid','role','authenticated','amr',jsonb_build_array(jsonb_build_object('method','oauth')))::text,true);
+  assert not public.is_private_trip_member(),'Synthetic nonmember was accepted';
+  assert not exists(select 1 from public.trip_import_jobs where id=(j->>'id')::uuid),'Nonmember read private row';
+  blocked:=false;begin perform public.trip_import_enqueue('https://example.com/demo','metadata','outsider-fixture');exception when others then blocked:=true;end;assert blocked,'Nonmember enqueue succeeded';
+  report:=report||'{"nonmember_read_and_enqueue_denied":true}';
+  execute 'reset role';execute 'set local role service_role';
+  leased:=public.trip_import_claim();assert leased->>'id'=j->>'id','Worker did not claim fixture';
+  assert not public.trip_import_complete((j->>'id')::uuid,gen_random_uuid(),fake_result,null),'Wrong lease wrote result';
+  assert public.trip_import_progress((j->>'id')::uuid,(leased->>'leaseToken')::uuid,'captions'),'Valid lease progress failed';
+  execute 'reset role';update public.trip_import_jobs set lease_until=now()-interval '1 second' where id=(j->>'id')::uuid;
+  execute 'set local role service_role';assert not public.trip_import_complete((j->>'id')::uuid,(leased->>'leaseToken')::uuid,fake_result,null),'Expired lease wrote result';
+  execute 'reset role';
+  perform set_config('request.jwt.claims',jsonb_build_object('sub',uid::text,'email',mail,'role','authenticated','amr',jsonb_build_array(jsonb_build_object('method','oauth')))::text,true);
+  execute 'set local role authenticated';perform public.trip_import_expire_own();
+  assert(select status='failed' from public.trip_import_jobs where id=(j->>'id')::uuid),'Owner status query did not expire job';
+  j2:=public.trip_import_retry((j->>'id')::uuid);
+  execute 'reset role';execute 'set local role service_role';leased:=public.trip_import_claim();assert public.trip_import_complete((j->>'id')::uuid,(leased->>'leaseToken')::uuid,fake_result,null),'Valid lease failed';
+  report:=report||'{"wrong_and_expired_leases_denied":true,"progress":true,"owner_expiry_retry":true,"valid_completion":true}';
+  execute 'reset role';execute 'set local role authenticated';perform public.trip_import_delete((j->>'id')::uuid);
+  for n in 2..4 loop j2:=public.trip_import_enqueue('https://example.com/demo','metadata','synthetic-rate-fixture-'||n);perform public.trip_import_delete((j2->>'id')::uuid);end loop;
+  blocked:=false;begin perform public.trip_import_enqueue('https://example.com/demo','metadata','synthetic-rate-overflow');exception when others then blocked:=true;end;assert blocked,'Deleting jobs erased rate budget';
+  report:=report||'{"delete_does_not_bypass_rate":true}';
+  execute 'reset role';
+  raise exception 'Rollback synthetic fixtures' using errcode='T0001';
+ exception when sqlstate 'T0001' then null;
+ end;
+ return report||jsonb_build_object('fixtures_rolled_back',not exists(select 1 from public.trip_import_jobs where idempotency_key like 'synthetic-%'),'worker_still_disabled',(select not enabled from public.trip_import_worker_config where id));
+end$$;
+select pg_temp.verify_import_queue() as verification;

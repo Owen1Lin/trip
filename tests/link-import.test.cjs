@@ -32,7 +32,14 @@ function result(url,model='metadata') {
  // Run the actual Edge handler with mocked platform APIs; no private credential values are used.
  const originalFetch=global.fetch,originalDeno=global.Deno;let handler;
  const env={SUPABASE_URL:'https://backend.testing',SUPABASE_ANON_KEY:'fake-public-key'};
- global.Deno={env:{get:key=>env[key]},serve:fn=>{handler=fn;}};
+ const socketCalls=[];
+ global.Deno={env:{get:key=>env[key]},serve:fn=>{handler=fn;},resolveDns:async(host,type)=>{assert.ok(['A','AAAA'].includes(type));return type==='A'?['8.8.8.8']:[];},connect:async options=>{
+  assert.equal(options.hostname,'8.8.8.8','source TCP connects only to validated DNS IP');assert.equal(options.port,443);let request='',wire=null,cursor=0;
+  const socket={close(){},write:async bytes=>{request+=new TextDecoder().decode(bytes);return bytes.length;},read:async buffer=>{
+   if(wire===null){const first=request.split('\r\n')[0],path=first.match(/^GET (\S+) HTTP\/1\.1$/)?.[1],host=request.match(/\r\nHost: ([^\r\n]+)/)?.[1];assert.ok(path&&host);socketCalls.push({host,path});const response=await global.fetch('https://'+host+path),body=new Uint8Array(await response.arrayBuffer()),headers=[...response.headers.entries()].filter(([key])=>key!=='content-length').map(([key,value])=>key+': '+value).join('\r\n'),head=new TextEncoder().encode('HTTP/1.1 '+response.status+' OK\r\n'+headers+'\r\nContent-Length: '+body.length+'\r\n\r\n');wire=new Uint8Array(head.length+body.length);wire.set(head);wire.set(body,head.length);}
+   if(cursor===wire.length)return null;const count=Math.min(buffer.length,wire.length-cursor);buffer.set(wire.subarray(cursor,cursor+count));cursor+=count;return count;
+  }};return socket;
+ },startTls:async(socket,options)=>{assert.ok(options.hostname);assert.deepEqual(options.alpnProtocols,['http/1.1']);assert.equal(options.caCerts,undefined,'TLS verification must retain default CA trust');return socket;}};
  await import('../supabase/functions/link-import/index.ts');
  let member=true,modelOutput={},modelContent=null,modelFailure=false,backendCalls=[];
  global.fetch=async(url,options={})=>{
@@ -89,7 +96,7 @@ function result(url,model='metadata') {
   for(const url of [SOURCES.maps,SOURCES.threads,SOURCES.instagram,'https://maps.app.goo.gl/Abc123'])assert.ok(await p.evaluate(url=>{try{window.TripLinkImport.validateUrl(url);return true;}catch{return false;}},url),url);
   for(const url of ['http://www.instagram.com/p/ABC/','https://instagram.com.evil.example/p/ABC/','https://user:pass@www.instagram.com/p/ABC/','https://127.0.0.1/maps','https://www.google.com/search?q=trip','javascript:alert(1)','https://www.instagram.com:8443/p/ABC/'])assert.equal(await p.evaluate(url=>{try{window.TripLinkImport.validateUrl(url);return true;}catch{return false;}},url),false,url);
   const initial=JSON.stringify(await trips());
-  await p.locator('#link-url').fill('https://evil.example/post');await p.locator('#link-fetch').click();assert.equal(requests.length,0);assert.equal(JSON.stringify(await trips()),initial);
+  await p.locator('#link-url').fill('http://example.com/post');await p.locator('#link-fetch').click();await p.waitForFunction(()=>!document.querySelector('#link-fetch').disabled);assert.equal(requests.length,0);assert.equal(JSON.stringify(await trips()),initial);
   for(const [platform,url] of Object.entries(SOURCES)){
    await fetchDraft(url);assert.equal(JSON.stringify(await trips()),initial,`${platform} fetch must never add`);
    assert.equal(await p.locator('#draft-place').inputValue(),'');assert.match(await p.locator('#draft-pending').innerText(),/待確認/);
@@ -111,12 +118,12 @@ function result(url,model='metadata') {
   const after=JSON.stringify(await trips());await navigate(p,'link-import');
   status=503;await p.locator('#link-url').fill(SOURCES.instagram);await p.locator('#link-fetch').click();await p.waitForFunction(()=>!document.querySelector('#link-fetch').disabled);assert.match(await p.locator('#link-import-status').innerText(),/手動|無法|失敗/);assert.equal(JSON.stringify(await trips()),after);assert.equal(await p.locator('#draft-evidence').inputValue(),'');assert.equal(await p.locator('#draft-place').inputValue(),'');await p.locator('#draft-place').fill('手動填寫的備用活動');await schedule('2026-10-23','afternoon','18:00','19:00');await p.locator('#draft-confirm').check();await p.locator('#draft-add').click();assert.equal((await trips())[0].days[2][0].place,'手動填寫的備用活動');status=200;
   const preserved=JSON.stringify(await trips());await navigate(p,'link-import');
-  for(const [code,message,expected] of [[404,'Function not found',/未部署|尚未.*部署/],[422,'Source unavailable',/公開|平台|來源/]]){
-   status=code;reply={error:message};await p.locator('#link-url').fill(SOURCES.instagram);await p.locator('#link-fetch').click();await p.waitForFunction(()=>!document.querySelector('#link-fetch').disabled);assert.match(await p.locator('#link-import-status').innerText(),expected);assert.match(await p.locator('#link-import-status').innerText(),/手動/);assert.ok(await p.locator('#link-draft-form').isVisible());assert.equal(await p.locator('#draft-place').inputValue(),'');assert.equal(await p.locator('#draft-evidence').inputValue(),'');assert.equal(JSON.stringify(await trips()),preserved);await p.locator('#draft-cancel').click();
+  for(const [code,message,expected] of [[404,'Function not found',/未部署|尚未.*部署/],[422,'Source unavailable',/公開|平台|來源|Source unavailable/]]){
+   status=code;reply={error:message};await p.locator('#link-url').fill(SOURCES.instagram);await p.locator('#link-fetch').click();await p.waitForFunction(()=>!document.querySelector('#link-fetch').disabled);assert.match(await p.locator('#link-import-status').innerText(),expected);assert.match(await p.locator('#link-import-status').innerText(),/手動|貼入原文|字幕|圖片/);assert.ok(await p.locator('#link-draft-form').isVisible());assert.equal(await p.locator('#draft-place').inputValue(),'');assert.equal(await p.locator('#draft-evidence').inputValue(),'');assert.equal(JSON.stringify(await trips()),preserved);await p.locator('#draft-cancel').click();
   }
   status=200;reply=null;const countBeforeMismatch=requests.length;
   await p.evaluate(()=>{window.__savedTripAuth=window.TripAuth;window.TripAuth=Object.freeze({requireMembership:window.TripAuth.requireMembership});});
-  await p.locator('#link-url').fill(SOURCES.maps);await p.locator('#link-fetch').click();await p.waitForFunction(()=>!document.querySelector('#link-fetch').disabled);assert.match(await p.locator('#link-import-status').innerText(),/版本|重新整理|快取/);assert.match(await p.locator('#link-import-status').innerText(),/手動/);assert.ok(await p.locator('#link-draft-form').isVisible());assert.equal(await p.locator('#draft-evidence').inputValue(),'');assert.equal(JSON.stringify(await trips()),preserved);assert.equal(requests.length,countBeforeMismatch);
+  await p.locator('#link-url').fill(SOURCES.maps);await p.locator('#link-fetch').click();await p.waitForFunction(()=>!document.querySelector('#link-fetch').disabled);assert.match(await p.locator('#link-import-status').innerText(),/版本|重新整理|快取/);assert.match(await p.locator('#link-import-status').innerText(),/手動|貼入原文|字幕|圖片/);assert.ok(await p.locator('#link-draft-form').isVisible());assert.equal(await p.locator('#draft-evidence').inputValue(),'');assert.equal(JSON.stringify(await trips()),preserved);assert.equal(requests.length,countBeforeMismatch);
   await p.evaluate(()=>{window.TripAuth=window.__savedTripAuth;delete window.__savedTripAuth;});await p.locator('#draft-cancel').click();
   for(const width of [390,320]){
    await p.setViewportSize({width,height:844});await fetchDraft(SOURCES.maps);assert.ok(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`mobile overflow at ${width}`);

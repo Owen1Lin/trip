@@ -363,6 +363,37 @@ function addImportedDraft(draft) {
   trip=validateTrips([candidate])[0]; activeDay=day; resetEditor(); changed();
   window.dispatchEvent(new CustomEvent('trip:activity-added'));
 }
-window.TripPlanner=Object.freeze({ unlock,lock,startActivity,addImportedDraft,getTrips:()=>{requireAuth();return structuredClone([trip]);},validateTrips,replaceTrips:(trips,{silent=false}={})=>{requireAuth();const validated=validateTrips(trips);trip=validated[0];if(!silent)activeDay=0;changed({silent});} });
+function addImportedDrafts(drafts) {
+  requireAuth();
+  if (!Array.isArray(drafts) || !drafts.length || drafts.length > 50) throw new Error('一次請選擇 1 至 50 筆匯入草稿。');
+  const candidate=structuredClone(trip), keys=new Set(candidate.days.flat().flatMap(activity=>activity.fields.filter(field=>field.label==='匯入識別').map(field=>field.value)));
+  const ids=[];
+  for (const [index,draft] of drafts.entries()) {
+    if (!draft || draft.confirmed!==true) throw new Error(`第 ${index+1} 筆請先確認來源、日期與時間；整批尚未加入。`);
+    const day=DATES.indexOf(draft.date);
+    if (day<0) throw new Error(`第 ${index+1} 筆請選擇旅行日期；整批尚未加入。`);
+    const timing={startTime:draft.startTime || '',endTime:draft.endTime || '',endDayOffset:draft.endDayOffset ?? 0};
+    if(!validTiming(timing)) throw new Error(`第 ${index+1} 筆時間不正確；跨日須明確確認，整批尚未加入。`);
+    if(timing.endDayOffset===1 && draft.crossDayConfirmed!==true) throw new Error(`第 ${index+1} 筆請確認結束於翌日；整批尚未加入。`);
+    if(!text(draft.importKey,120) || !/^[a-zA-Z0-9_-]+$/.test(draft.importKey)) throw new Error('匯入識別不完整，請重新整理結果。');
+    if(keys.has(draft.importKey)) throw new Error(`第 ${index+1} 筆已加入過，請取消勾選重複項目；整批尚未加入。`);
+    keys.add(draft.importKey);
+    if(candidate.days[day].length>=100) throw new Error(`第 ${index+1} 筆超過每日 100 筆上限；整批尚未加入。`);
+    const fields=[{label:'匯入識別',value:draft.importKey}];
+    if(!Array.isArray(draft.sources) || draft.sources.length>10) throw new Error('來源格式不正確。');
+    for(const source of draft.sources) {
+      if(typeof source !== 'string' || source.length>1000) throw new Error('來源格式不正確。');
+      if(source.startsWith('https://')) { const url=new URL(source);if(url.username || url.password) throw new Error('來源連結不可包含帳密。'); }
+      fields.push({label:'匯入來源',value:source});
+    }
+    const activity={id:newId(),...timing,period:periodFor(timing.startTime),category:draft.category,place:draft.place,shopping:'',notes:draft.notes || '',completed:false,createdBy:currentActor(),updatedBy:currentActor(),fields};
+    candidate.days[day].push(activity);ids.push(activity.id);
+  }
+  const validated=validateTrips([candidate])[0];
+  trip=validated;activeDay=DATES.indexOf(drafts[0].date);resetEditor();changed();
+  window.dispatchEvent(new CustomEvent('trip:activity-added'));
+  return {count:ids.length,ids};
+}
+window.TripPlanner=Object.freeze({ unlock,lock,startActivity,addImportedDraft,addImportedDrafts,getTrips:()=>{requireAuth();return structuredClone([trip]);},validateTrips,replaceTrips:(trips,{silent=false}={})=>{requireAuth();const validated=validateTrips(trips);trip=validated[0];if(!silent)activeDay=0;changed({silent});} });
 lock();
 })();
