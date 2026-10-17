@@ -1,0 +1,32 @@
+// Synthetic journeys and mocked Google/Supabase only; not real two-device OAuth acceptance.
+const fs=require('node:fs');
+const {browser,assert,mockBackend,login,navigate,addActivity,editActivity,googleUser}=require('./helpers.cjs');
+(async()=>{
+ const b=await browser();const contexts=[];
+ const trips=p=>p.evaluate(()=>window.TripPlanner.getTrips());
+ const recolor=(p,color)=>p.evaluate(color=>{const value=window.TripPlanner.getTrips();value[0].days[0][0].color=color;window.TripPlanner.replaceTrips(value);},color);
+ const save=async p=>{await navigate(p,'sync');await p.locator('#cloud-save').click();await p.waitForFunction(()=>!document.querySelector('#cloud-save').disabled);};
+ try{
+  const a=await b.newContext({viewport:{width:390,height:844},acceptDownloads:true});contexts.push(a);const sa=await mockBackend(a),pa=await a.newPage();pa.on('dialog',d=>d.accept());await login(pa);
+  await addActivity(pa,'虛構顏色同步測試','09:00','10:00');assert.equal((await trips(pa))[0].days[0][0].color,'white');
+  await editActivity(pa,'虛構顏色同步測試');await pa.locator('#activity-appearance').evaluate(e=>e.open=true);await pa.locator('#activity-color').selectOption('lavender');await pa.locator('#activity-submit').click();
+  assert.equal((await trips(pa))[0].days[0][0].color,'lavender');assert.equal(await pa.evaluate(()=>window.TripSync.getState().dirty),true);await save(pa);assert.equal(sa.snapshot.trips[0].days[0][0].color,'lavender');assert.equal(await pa.evaluate(()=>window.TripSync.getState().dirty),false);
+  // Backups use the exact same normalized activity data as shared snapshots.
+  const download=pa.waitForEvent('download');await pa.locator('#export-trips').click();const backup=JSON.parse(fs.readFileSync(await(await download).path(),'utf8'));assert.equal(backup.trips[0].days[0][0].color,'lavender');
+  await recolor(pa,'mint');await pa.locator('#import-file').setInputFiles({name:'synthetic-color.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(backup))});await pa.waitForTimeout(100);assert.equal((await trips(pa))[0].days[0][0].color,'lavender');
+  const user=googleUser('winnietravel@gmail.com','22222222-2222-2222-2222-222222222222'),c=await b.newContext({viewport:{width:320,height:844}});contexts.push(c);const sb=await mockBackend(c,{user,snapshot:structuredClone(sa.snapshot)}),pb=await c.newPage();pb.on('dialog',d=>d.accept());await login(pb,user);assert.equal((await trips(pb))[0].days[0][0].color,'lavender');
+  await editActivity(pb,'虛構顏色同步測試');await pb.locator('#activity-appearance').evaluate(e=>e.open=true);await pb.locator('#activity-color').selectOption('rose');await pb.locator('#activity-submit').click();await save(pb);assert.equal(sb.snapshot.trips[0].days[0][0].color,'rose');assert.equal(sb.snapshot.trips[0].days[0][0].createdBy,'owen');assert.equal(sb.snapshot.trips[0].days[0][0].updatedBy,'winnie');
+  // A stale device must retain its local color and must not overwrite the newer remote color.
+  sa.snapshot=structuredClone(sb.snapshot);await recolor(pa,'mint');await save(pa);assert.equal(sa.snapshot.trips[0].days[0][0].color,'rose');assert.equal((await trips(pa))[0].days[0][0].color,'mint');assert.equal(await pa.evaluate(()=>window.TripSync.getState().dirty),true);assert.match(await pa.locator('#sync-status').innerText(),/另一位|衝突/);
+  await pa.locator('#cloud-load').click();await pa.waitForFunction(()=>!document.querySelector('#cloud-load').disabled);assert.equal((await trips(pa))[0].days[0][0].color,'rose');
+  await recolor(pa,'sky');sa.status=500;await save(pa);assert.equal((await trips(pa))[0].days[0][0].color,'sky');assert.equal(await pa.evaluate(()=>window.TripSync.getState().dirty),true);sa.status=200;
+  // A successful delayed save must preserve a newer color edit and its save reminder.
+  let release,hit;const gate=new Promise(resolve=>release=resolve),started=new Promise(resolve=>hit=resolve);await a.route('https://testing.supabase.co/rest/v1/shared_trip_snapshots?**',async r=>{if(r.request().method()!=='PATCH')return r.fallback();const body=r.request().postDataJSON();hit();await gate;sa.snapshot={...sa.snapshot,trips:body.trips,updated_at:'2026-10-14T10:02:00Z'};await r.fulfill({contentType:'application/json',body:JSON.stringify([sa.snapshot])});});
+  await pa.locator('#cloud-save').click();await started;await recolor(pa,'lemon');release();await pa.waitForFunction(()=>!document.querySelector('#cloud-save').disabled);assert.equal(sa.snapshot.trips[0].days[0][0].color,'sky');assert.equal((await trips(pa))[0].days[0][0].color,'lemon');assert.equal(await pa.evaluate(()=>window.TripSync.getState().dirty),true);
+  // Rich import labels retain machine-readable category values and new imports default white.
+  await navigate(pb,'link-import');const raw='虛構餐廳 美食測試資料';await c.route('https://testing.supabase.co/functions/v1/link-import',r=>r.fulfill({contentType:'application/json',body:JSON.stringify({version:2,status:'ready',sources:[{id:'s1',url:'https://example.com/synthetic',title:'虛構來源',text:raw,capturedAt:'2026-10-18T00:00:00Z',type:'article'}],items:[{name:{value:'虛構餐廳',quote:'虛構餐廳',sourceId:'s1'},scope:{quote:raw,sourceId:'s1'},facts:{},opinions:[],unknown:[]}],warnings:[]})}));await pb.locator('#link-url').fill('https://example.com/synthetic');await pb.locator('#link-text').fill(raw);await pb.locator('#link-fetch').click();await pb.locator('#import-0-category').waitFor();
+  const options=await pb.locator('#import-0-category option').evaluateAll(nodes=>nodes.map(n=>({value:n.value,label:n.textContent})));assert.deepEqual(options,await pb.evaluate(()=>window.TripPlanner.categoryOptions));assert.equal(options.find(o=>o.value==='美食').label,'美食 🍚');
+  await pb.locator('#import-0-category').selectOption('美食');await pb.locator('#import-0-select').check();await pb.locator('#import-0-date').selectOption('2026-10-21');await pb.locator('#import-0-confirm').check();await pb.locator('#import-batch-add').click();const imported=(await trips(pb))[0].days[0].find(a=>a.place==='虛構餐廳');assert.equal(imported.category,'美食');assert.equal(imported.color,'white');
+  console.log('PASS (mock appearance sync): color editing/defaults, two-member cross-context shared roundtrip, backup/restore, stale-version rejection, failed/delayed-save reminders, rich category emoji/pure values and white import default. Real Google, device sync and iPhone are separate.');
+ }finally{for(const c of contexts)await c.close();await b.close();}
+})().catch(e=>{console.error(e);process.exitCode=1;});

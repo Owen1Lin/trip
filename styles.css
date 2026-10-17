@@ -1245,7 +1245,7 @@ body.mobile-editor-open {
 }
 .activity-details>summary.activity-row {
   display:grid;
-  grid-template-columns:82px 29px minmax(0,1fr) 24px 8px;
+  grid-template-columns:82px 49px minmax(0,1fr) 24px 8px;
   align-items:center;
   gap:5px;
   min-height:54px;
@@ -1435,7 +1435,7 @@ body.mobile-editor-open .save-reminder {
 }
 @media(min-width:480px) {
   .activity-details>summary.activity-row {
-    grid-template-columns:100px 40px minmax(0,1fr) 34px 10px;
+    grid-template-columns:100px 58px minmax(0,1fr) 34px 10px;
     gap:10px;
     padding:11px 13px;
   }
@@ -1446,7 +1446,7 @@ body.mobile-editor-open .save-reminder {
   .trip-heading h1 { font-size:28px; }
   .trip-duration { font-size:11px; }
   .activity-details>summary.activity-row {
-    grid-template-columns:130px 58px minmax(0,1fr) 50px 10px;
+    grid-template-columns:130px 68px minmax(0,1fr) 50px 10px;
     min-height:60px;
     gap:16px;
     padding:12px 18px;
@@ -2097,4 +2097,45 @@ html[data-editor-keyboard=open] .activity-form>.planner-actions {
     max-height:clamp(96px,calc(var(--mobile-viewport-height,100dvh) / 3),240px);
   }
   #view-link-import :is(input,select,textarea,button) { scroll-margin-bottom:calc(var(--nav-height) + 100px); }
+}
+
+/* Pale activity paper remains separate from author badges and overnight status. */
+.activity-card[data-activity-color] {
+  --muted:#53685e;
+  background:var(--activity-paper,#fff);
+}
+.activity-card[data-activity-color=white] { --activity-paper:#ffffff; }
+.activity-card[data-activity-color=rose] { --activity-paper:#fff1f4; }
+.activity-card[data-activity-color=peach] { --activity-paper:#fff3e8; }
+.activity-card[data-activity-color=lemon] { --activity-paper:#fffbe5; }
+.activity-card[data-activity-color=mint] { --activity-paper:#ecf8ef; }
+.activity-card[data-activity-color=sky] { --activity-paper:#edf5ff; }
+.activity-card[data-activity-color=lavender] { --activity-paper:#f4efff; }
+.row-category { white-space:nowrap; }
+.activity-appearance {
+  min-width:0;
+  margin:0 0 16px;
+  padding:0;
+  border:1px solid var(--border);
+  border-radius:10px;
+  background:#fff;
+}
+.activity-appearance>summary {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  min-height:44px;
+  padding:10px 12px;
+  cursor:pointer;
+  font-weight:650;
+  border-radius:10px;
+}
+.appearance-summary-hint { font-size:12px; font-weight:400; color:#53685e; }
+.activity-appearance[open]>summary>.appearance-summary-hint { display:none; }
+.activity-appearance>.form-field { margin:0; padding:4px 12px 12px; }
+.activity-appearance select { width:100%; min-height:44px; min-width:0; }
+.activity-appearance small { display:block; margin-top:6px; font-size:12px; }
+@media(max-width:359px) {
+  .activity-details>summary.activity-row { gap:4px; padding-inline:7px; }
 }

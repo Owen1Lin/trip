@@ -10,6 +10,12 @@ const PERIODS = { morning: '上午', afternoon: '下午', pending: '時間待確
 const DATES = ['2026-10-21','2026-10-22','2026-10-23','2026-10-24','2026-10-25'];
 const periodFor = start => start ? (start < '12:00' ? 'morning' : 'afternoon') : 'pending';
 const CATEGORIES = ['景點', '購物', '美食', '交通', '住宿', '自訂'];
+const CATEGORY_EMOJI = Object.freeze({景點:'📍',購物:'🛍️',美食:'🍚',交通:'🚆',住宿:'🏨',自訂:'✨'});
+const categoryLabel = category => CATEGORIES.includes(category) ? `${category} ${CATEGORY_EMOJI[category]}` : category;
+const categoryOptions = Object.freeze(CATEGORIES.map(value => Object.freeze({value,label:categoryLabel(value)})));
+const ACTIVITY_COLORS = Object.freeze(['white','rose','peach','lemon','mint','sky','lavender']);
+const activityColor = activity => activity.color === undefined ? 'white' : activity.color;
+const selectedColor = () => $('#activity-color')?.value ?? 'white';
 const emptyTrip = () => ({ id: 'fukuoka-20261021', name: '福岡＆九州五日旅行', destination: '福岡＆九州', startDate: '2026-10-21', dayCount: 5, days: [[], [], [], [], []] });
 let session = null, trip = null, activeDay = 0, editingId = null;
 let sessionGeneration = 0;
@@ -37,13 +43,13 @@ function validateTrips(trips) {
   const days = input.days.map(day => {
     if (!Array.isArray(day) || day.length > 100) fail();
     return day.map(activity => {
-      if (!activity || typeof activity.id !== 'string' || !/^[a-zA-Z0-9_-]{1,80}$/.test(activity.id) || ids.has(activity.id) || !validTiming(activity) || !['morning','afternoon','pending','noon','evening'].includes(activity.period) || !CATEGORIES.includes(activity.category) || !text(activity.place, 150) || !text(activity.shopping, 2000, true) || !text(activity.notes, 5000, true) || typeof activity.completed !== 'boolean' || !Array.isArray(activity.fields) || activity.fields.length > 20) fail();
+      if (!activity || typeof activity.id !== 'string' || !/^[a-zA-Z0-9_-]{1,80}$/.test(activity.id) || ids.has(activity.id) || !validTiming(activity) || !['morning','afternoon','pending','noon','evening'].includes(activity.period) || !CATEGORIES.includes(activity.category) || !ACTIVITY_COLORS.includes(activityColor(activity)) || !text(activity.place, 150) || !text(activity.shopping, 2000, true) || !text(activity.notes, 5000, true) || typeof activity.completed !== 'boolean' || !Array.isArray(activity.fields) || activity.fields.length > 20) fail();
       if (!Object.hasOwn(ACTOR_NAMES, attribution(activity.createdBy)) || !Object.hasOwn(ACTOR_NAMES, attribution(activity.updatedBy))) fail();
       const notes=mergeNotes(activity.shopping,activity.notes);
       if (!text(notes,5000,true)) fail();
       ids.add(activity.id);
       const fields = activity.fields.map(field => { if (!field || !text(field.label, 60) || !text(field.value, 1000, true)) fail(); return { label: field.label.trim(), value: field.value }; });
-      return { id: activity.id, startTime: activity.startTime, endTime: activity.endTime, endDayOffset: endOffset(activity), period: periodFor(activity.startTime), category: activity.category, place: activity.place.trim(), shopping: '', notes, completed: activity.completed, fields, createdBy: attribution(activity.createdBy), updatedBy: attribution(activity.updatedBy) };
+      return { id: activity.id, startTime: activity.startTime, endTime: activity.endTime, endDayOffset: endOffset(activity), period: periodFor(activity.startTime), category: activity.category, color: activityColor(activity), place: activity.place.trim(), shopping: '', notes, completed: activity.completed, fields, createdBy: attribution(activity.createdBy), updatedBy: attribution(activity.updatedBy) };
     });
   });
   return [{ ...emptyTrip(), days }];
@@ -71,6 +77,7 @@ function updateEditorDate() {
 function resetEditor() {
   editingId = null; quickBatch = null; quickSource = null; $('#activity-form').reset(); $('#custom-fields').replaceChildren();
   $('#activity-start').value = ''; $('#activity-end').value = '';
+  if ($('#activity-color')) $('#activity-color').value='white';
   if ($('#activity-date')) $('#activity-date').value=DATES[activeDay];
   updateEditorDate();
   if ($('#quick-preview')) { $('#quick-preview').textContent=''; delete $('#quick-preview').dataset.state; }
@@ -179,6 +186,7 @@ function edit(activity) {
   if ($('#activity-date')) $('#activity-date').value=DATES[activeDay];
   updateEditorDate();
   if ($('#activity-next-day')) $('#activity-next-day').checked=endOffset(activity)===1;
+  if ($('#activity-color')) $('#activity-color').value=activityColor(activity);
   for (const [id, value] of Object.entries({ start: activity.startTime, end: activity.endTime, period: periodFor(activity.startTime), category: activity.category, place: activity.place, notes:activity.notes })) $(`#activity-${id}`).value = value;
   $('#custom-fields').replaceChildren(); activity.fields.forEach(field => addField(field.label, field.value));
   $('#activity-form-title').textContent = '編輯活動'; $('#activity-submit').textContent = '完成編輯'; $('#activity-cancel').hidden = false;
@@ -209,11 +217,11 @@ function render() {
     const activities=node('div','period-list');
     if (!sorted.length) activities.append(node('p','empty-state','留點空白，等我們一起填上。'));
     sorted.forEach(activity=>{
-      const card=node('article',`activity-card actor-${activity.createdBy}${activity.completed ? ' is-completed' : ''}`); card.dataset.activityId=activity.id;
+      const card=node('article',`activity-card actor-${activity.createdBy}${activity.completed ? ' is-completed' : ''}`); card.dataset.activityId=activity.id; card.dataset.activityColor=activityColor(activity);
       const details=node('details','activity-details');
       const summary=node('summary','activity-row');
       const timing=activity.startTime ? `${activity.startTime}–${endOffset(activity)===1 ? '翌' : ''}${activity.endTime || '待確認'}` : '時間待確認';
-      summary.append(node('span','row-time',timing),node('span','row-category category-badge',activity.category),node('span','row-title',activity.place),node('span',`row-actor actor-badge actor-${activity.createdBy}`,ACTOR_NAMES[activity.createdBy]));
+      summary.append(node('span','row-time',timing),node('span','row-category category-badge',categoryLabel(activity.category)),node('span','row-title',activity.place),node('span',`row-actor actor-badge actor-${activity.createdBy}`,ACTOR_NAMES[activity.createdBy]));
       if (endOffset(activity)===1) summary.querySelector('.row-time').append(node('span','cross-day-badge','跨日 +1'));
       const content=node('div','activity-content');
       content.append(node('p','activity-date-range',`${DATES[activeDay]} ${activity.startTime || '時間待確認'} 至 ${endOffset(activity)===1 ? followingDate(DATES[activeDay]) : DATES[activeDay]} ${activity.endTime || '時間待確認'}（日本時間）`));
@@ -265,7 +273,7 @@ $('#activity-form').addEventListener('submit', event => {
         const day=DATES.indexOf(entry.date);
         if(day<0)throw new Error(`第 ${index+1} 筆：日期不在這次旅行範圍。`);
         if(candidate.days[day].length>=100)throw new Error(`第 ${index+1} 筆：${entry.date} 最多 100 個活動；整批尚未加入。`);
-        candidate.days[day].push({id:newId(),startTime:entry.startTime || '',endTime:entry.endTime || '',endDayOffset:entry.endDayOffset || 0,period:periodFor(entry.startTime || ''),category:$('#activity-category').value,place:entry.place,shopping:'',notes:entry.notes || '',completed:false,createdBy:actor,updatedBy:actor,fields:[]});
+        candidate.days[day].push({id:newId(),startTime:entry.startTime || '',endTime:entry.endTime || '',endDayOffset:entry.endDayOffset || 0,period:periodFor(entry.startTime || ''),category:$('#activity-category').value,color:selectedColor(),place:entry.place,shopping:'',notes:entry.notes || '',completed:false,createdBy:actor,updatedBy:actor,fields:[]});
       }
       const validated=validateTrips([candidate])[0];
       trip=validated;activeDay=DATES.indexOf(batch.entries[0].date);resetEditor();changed();closeEditor();toast(`已新增 ${batch.entries.length} 筆活動。`);
@@ -278,7 +286,7 @@ $('#activity-form').addEventListener('submit', event => {
   const targetDay=DATES.indexOf($('#activity-date') ? $('#activity-date').value : DATES[activeDay]);
   if(targetDay<0){toast('請選擇這次旅行的日期。');return;}
   if(sourceDay!==targetDay&&trip.days[targetDay].length>=100){toast('每天最多 100 個活動。');return;}
-  const activity={...old,startTime:$('#activity-start').value,endTime:$('#activity-end').value,endDayOffset:$('#activity-next-day')?.checked ? 1 : 0,period:periodFor($('#activity-start').value),category:$('#activity-category').value,place:$('#activity-place').value.trim(),shopping:'',notes:$('#activity-notes').value,updatedBy:currentActor(),fields:[...$('#custom-fields').children].map(row=>({label:row.children[0].value.trim(),value:row.children[1].value}))};
+  const activity={...old,startTime:$('#activity-start').value,endTime:$('#activity-end').value,endDayOffset:$('#activity-next-day')?.checked ? 1 : 0,period:periodFor($('#activity-start').value),category:$('#activity-category').value,color:selectedColor(),place:$('#activity-place').value.trim(),shopping:'',notes:$('#activity-notes').value,updatedBy:currentActor(),fields:[...$('#custom-fields').children].map(row=>({label:row.children[0].value.trim(),value:row.children[1].value}))};
   if(!validTiming(activity)){toast('請確認有效起訖時間；跨日請勾選結束於翌日，未填時間可留待確認。');return;}
   const candidate=structuredClone(trip);candidate.days[sourceDay]=candidate.days[sourceDay].filter(item=>item.id!==editingId);candidate.days[targetDay].push(activity);
   try{trip=validateTrips([candidate])[0];}catch(error){toast(error.message);return;}
@@ -358,7 +366,7 @@ function addImportedDraft(draft) {
   let source;
   try { source = new URL(draft.sourceUrl); } catch { throw new Error('來源連結格式不正確。'); }
   if (source.protocol!=='https:'||source.username||source.password||source.href.length>1000) throw new Error('來源連結格式不正確。');
-  const activity = { id:newId(), startTime:draft.startTime,endTime:draft.endTime,period:periodFor(draft.startTime),category:draft.category,place:draft.place,shopping:draft.shopping || '',notes:draft.notes || '',completed:false,createdBy:currentActor(),updatedBy:currentActor(),fields:[{label:'匯入來源',value:source.href}] };
+  const activity = { id:newId(), startTime:draft.startTime,endTime:draft.endTime,period:periodFor(draft.startTime),category:draft.category,color:activityColor(draft),place:draft.place,shopping:draft.shopping || '',notes:draft.notes || '',completed:false,createdBy:currentActor(),updatedBy:currentActor(),fields:[{label:'匯入來源',value:source.href}] };
   const candidate=structuredClone(trip); candidate.days[day].push(activity);
   trip=validateTrips([candidate])[0]; activeDay=day; resetEditor(); changed();
   window.dispatchEvent(new CustomEvent('trip:activity-added'));
@@ -386,7 +394,7 @@ function addImportedDrafts(drafts) {
       if(source.startsWith('https://')) { const url=new URL(source);if(url.username || url.password) throw new Error('來源連結不可包含帳密。'); }
       fields.push({label:'匯入來源',value:source});
     }
-    const activity={id:newId(),...timing,period:periodFor(timing.startTime),category:draft.category,place:draft.place,shopping:'',notes:draft.notes || '',completed:false,createdBy:currentActor(),updatedBy:currentActor(),fields};
+    const activity={id:newId(),...timing,period:periodFor(timing.startTime),category:draft.category,color:activityColor(draft),place:draft.place,shopping:'',notes:draft.notes || '',completed:false,createdBy:currentActor(),updatedBy:currentActor(),fields};
     candidate.days[day].push(activity);ids.push(activity.id);
   }
   const validated=validateTrips([candidate])[0];
@@ -394,6 +402,6 @@ function addImportedDrafts(drafts) {
   window.dispatchEvent(new CustomEvent('trip:activity-added'));
   return {count:ids.length,ids};
 }
-window.TripPlanner=Object.freeze({ unlock,lock,startActivity,addImportedDraft,addImportedDrafts,getTrips:()=>{requireAuth();return structuredClone([trip]);},validateTrips,replaceTrips:(trips,{silent=false}={})=>{requireAuth();const validated=validateTrips(trips);trip=validated[0];if(!silent)activeDay=0;changed({silent});} });
+window.TripPlanner=Object.freeze({ categoryLabel,categoryOptions,activityColors:ACTIVITY_COLORS,unlock,lock,startActivity,addImportedDraft,addImportedDrafts,getTrips:()=>{requireAuth();return structuredClone([trip]);},validateTrips,replaceTrips:(trips,{silent=false}={})=>{requireAuth();const validated=validateTrips(trips);trip=validated[0];if(!silent)activeDay=0;changed({silent});} });
 lock();
 })();

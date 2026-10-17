@@ -49,6 +49,8 @@ jobs:
           node tests/rich-jobs-backend.test.cjs
           node tests/rich-import.test.cjs
           node tests/rich-jobs-browser.test.cjs
+          node tests/appearance.test.cjs
+          node tests/appearance-sync.test.cjs
           python3 tests/worker_test.py
   cloud-readiness:
     runs-on: ubuntu-latest

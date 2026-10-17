@@ -222,7 +222,7 @@
       const fields=el('div','import-edit-fields');fields.append(el('h4','','本人編輯的旅行草稿'));
       for(const [key,title,suffix] of [['place','名稱','place'],['category','分類','category'],['notes','備註（可修改；來源證據仍保留在上方）','notes'],['date','旅行開始日期','date'],['startTime','開始時間（選填）','start'],['endTime','結束時間（選填）','end']]) {
         const label=el('label','form-field',title),input=el(key==='notes'?'textarea':['category','date'].includes(key)?'select':'input');input.id=`import-${index}-${suffix}`;input.setAttribute('aria-label',`第${index+1}筆${title}`);
-        if(key==='category')for(const option of ['自訂','景點','購物','美食','交通','住宿']) {const node=el('option','',option);node.value=option;input.append(node);}
+        if(key==='category')for(const option of window.TripPlanner.categoryOptions) {const node=el('option','',option.label);node.value=option.value;input.append(node);}
         if(key==='date')for(const option of ['待確認：選擇日期',...dates]) {const node=el('option','',option);node.value=dates.includes(option)?option:'';input.append(node);}
         if(key==='startTime' || key==='endTime')input.type='time';
         if(key==='place')input.maxLength=150;if(key==='notes'){input.rows=5;input.maxLength=5000;}
